@@ -1,7 +1,13 @@
-use std::{net::SocketAddr, os::raw::c_char};
+use std::{mem::forget, net::SocketAddr, os::raw::c_char};
 
-use crate::{input::Input, Events, GGRSConfig, Status, NETPLAY};
-use ggrs::{GGRSEvent, PlayerType, SessionBuilder, UdpNonBlockingSocket};
+use crate::{
+    model::{
+        input::Input,
+        netplay_request::{NetplayRequest, NetplayRequests},
+    },
+    Events, GGRSConfig, Status, NETPLAY,
+};
+use ggrs::{GGRSError, GGRSEvent, PlayerType, SessionBuilder, UdpNonBlockingSocket};
 use std::ffi::CString;
 
 #[no_mangle]
@@ -22,10 +28,8 @@ pub unsafe extern "C" fn netplay_init() -> Status {
     ));
 
     {
-        let arc = NETPLAY.clone();
-        let mut np = arc.lock().unwrap();
-        if np.session().is_none() {
-            np.update_session(sess_ptr);
+        if NETPLAY.session().is_none() {
+            NETPLAY.update_session(sess_ptr);
         }
     }
 
@@ -33,14 +37,11 @@ pub unsafe extern "C" fn netplay_init() -> Status {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_pool() -> Status {
-    let arc = NETPLAY.clone();
-    let mut np = arc.lock().unwrap();
-
-    if np.session().is_some() {
-        let session = np.session().take().unwrap();
+pub unsafe extern "C" fn netplay_poll() -> Status {
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session().take().unwrap();
         (*session).poll_remote_clients();
-        np.update_session(session);
+        NETPLAY.update_session(session);
         return Status::ok();
     }
 
@@ -49,12 +50,10 @@ pub unsafe extern "C" fn netplay_pool() -> Status {
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_add_local_input(input: Input) -> Status {
-    let arc = NETPLAY.clone();
-    let np = arc.lock().unwrap();
-
-    if np.session().is_some() {
-        let session = np.session().take().unwrap();
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session().take().unwrap();
         (*session).add_local_input(0, input).unwrap();
+        NETPLAY.update_session(session);
         return Status::ok();
     }
 
@@ -63,11 +62,8 @@ pub unsafe extern "C" fn netplay_add_local_input(input: Input) -> Status {
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_events() -> Events {
-    let arc = NETPLAY.clone();
-    let np = arc.lock().unwrap();
-
-    if np.session().is_some() {
-        let session = np.session().take().unwrap();
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session().take().unwrap();
 
         let mut events: Vec<&'static str> = vec![];
 
@@ -115,6 +111,8 @@ pub unsafe extern "C" fn netplay_events() -> Events {
             }
         }
 
+        NETPLAY.update_session(session);
+
         return Events::new(events);
     }
 
@@ -128,5 +126,68 @@ pub extern "C" fn status_info_free(s: *mut c_char) {
             return;
         }
         CString::from_raw(s)
+    };
+}
+
+#[no_mangle]
+pub extern "C" fn netplay_events_free(events: Events) {
+    unsafe {
+        if events.data.is_null() {
+            return;
+        }
+        let _ = Vec::from_raw_parts(events.data as *mut Events, 0, 0);
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_advance_frame() -> Status {
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session().take().unwrap();
+
+        if NETPLAY.requests().is_empty() {
+            match (*session).advance_frame() {
+                Ok(requests) => {
+                    NETPLAY.update_requests(requests);
+
+                    return Status::ok();
+                }
+                Err(GGRSError::PredictionThreshold) => Status::ko("PredictionThreshold"),
+                Err(e) => Status::ko(Box::leak(Box::new(format!(
+                    "GGRSError : {}",
+                    e.to_string()
+                )))), //TODO: send error
+            };
+        } else {
+            return Status::ko(
+                "Netplay request is not empty. Finish using request before advancing",
+            );
+        }
+
+        NETPLAY.update_session(session);
+    }
+
+    Status::ko("Netplay is null")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_get_requests() -> NetplayRequests {
+    if NETPLAY.session().is_some() {
+        let requests = NETPLAY.requests();
+        let reqs = NetplayRequests::new(requests.clone());
+
+        forget(requests);
+
+        return reqs;
+    }
+    NetplayRequests::empty()
+}
+
+#[no_mangle]
+pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
+    unsafe {
+        if requests.data.is_null() {
+            return;
+        }
+        let _ = Vec::from_raw_parts(requests.data as *mut NetplayRequest, 0, 0);
     };
 }
