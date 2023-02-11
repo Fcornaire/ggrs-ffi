@@ -1,7 +1,6 @@
 use ggrs::Config;
-use model::input::Input;
+use model::{input::Input, state::GameState};
 use neplay::Netplay;
-use serde::{Deserialize, Serialize};
 use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char};
 
 pub mod ffi;
@@ -10,21 +9,11 @@ pub mod neplay;
 
 static mut NETPLAY: Netplay = Netplay::new(None);
 
-#[derive(Clone, Serialize, Deserialize)]
-#[repr(C)]
-pub struct State {
-    pub frame: i32,
-    pub num_players: usize,
-    pub positions: Vec<(f32, f32)>,
-    pub velocities: Vec<(f32, f32)>,
-    pub rotations: Vec<f32>,
-}
-
 #[derive(Debug)]
 pub struct GGRSConfig;
 impl Config for GGRSConfig {
     type Input = Input; // Copy + Clone + PartialEq + bytemuck::Pod + bytemuck::Zeroable
-    type State = State; // Clone
+    type State = GameState; // Clone
     type Address = SocketAddr; // Clone + PartialEq + Eq + Hash
 }
 

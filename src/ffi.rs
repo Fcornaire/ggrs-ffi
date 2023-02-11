@@ -2,8 +2,9 @@ use std::{mem::forget, net::SocketAddr, os::raw::c_char};
 
 use crate::{
     model::{
+        ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests, state_ffi::GameStateFFI},
         input::Input,
-        netplay_request::{NetplayRequest, NetplayRequests},
+        netplay_request::NetplayRequest,
     },
     Events, GGRSConfig, Status, NETPLAY,
 };
@@ -48,17 +49,17 @@ pub unsafe extern "C" fn netplay_poll() -> Status {
     Status::ko("Netplay is null")
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn netplay_add_local_input(input: Input) -> Status {
-    if NETPLAY.session().is_some() {
-        let session = NETPLAY.session().take().unwrap();
-        (*session).add_local_input(0, input).unwrap();
-        NETPLAY.update_session(session);
-        return Status::ok();
-    }
+// #[no_mangle]
+// pub unsafe extern "C" fn netplay_add_local_input(input: Input) -> Status {
+//     if NETPLAY.session().is_some() {
+//         let session = NETPLAY.session().take().unwrap();
+//         (*session).add_local_input(0, input).unwrap();
+//         NETPLAY.update_session(session);
+//         return Status::ok();
+//     }
 
-    Status::ko("Netplay is null")
-}
+//     Status::ko("Netplay is null")
+// }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_events() -> Events {
@@ -140,30 +141,39 @@ pub extern "C" fn netplay_events_free(events: Events) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_advance_frame() -> Status {
+pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
     if NETPLAY.session().is_some() {
         let session = NETPLAY.session().take().unwrap();
+
+        (*session).add_local_input(0, input).unwrap();
 
         if NETPLAY.requests().is_empty() {
             match (*session).advance_frame() {
                 Ok(requests) => {
                     NETPLAY.update_requests(requests);
+                    NETPLAY.update_session(session);
 
                     return Status::ok();
                 }
-                Err(GGRSError::PredictionThreshold) => Status::ko("PredictionThreshold"),
-                Err(e) => Status::ko(Box::leak(Box::new(format!(
-                    "GGRSError : {}",
-                    e.to_string()
-                )))), //TODO: send error
+                Err(GGRSError::PredictionThreshold) => {
+                    NETPLAY.update_session(session);
+                    return Status::ko("PredictionThreshold");
+                }
+                Err(e) => {
+                    NETPLAY.update_session(session);
+                    return Status::ko(Box::leak(Box::new(format!(
+                        "GGRSError : {}",
+                        e.to_string()
+                    ))));
+                } //TODO: send error
             };
         } else {
+            NETPLAY.update_session(session);
+
             return Status::ko(
                 "Netplay request is not empty. Finish using request before advancing",
             );
         }
-
-        NETPLAY.update_session(session);
     }
 
     Status::ko("Netplay is null")
@@ -189,5 +199,50 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
             return;
         }
         let _ = Vec::from_raw_parts(requests.data as *mut NetplayRequest, 0, 0);
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: &GameStateFFI) -> Status {
+    if NETPLAY.session().is_some() {
+        let game_state = game_state_ffi.to_model(NETPLAY.game_state().frame());
+
+        return NETPLAY.handle_save_game_state_request(Some(game_state));
+    }
+
+    Status::ko("Netplay is null")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_advance_game_state() -> Inputs {
+    if NETPLAY.session().is_some() {
+        let inputs = NETPLAY.handle_advance_frame_request();
+
+        let inputs_ffi = Inputs::new(inputs.clone());
+
+        forget(inputs);
+
+        return inputs_ffi;
+    }
+
+    return Inputs::empty();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_load_game_state() -> Status {
+    if NETPLAY.session().is_some() {
+        return NETPLAY.handle_load_game_state_request();
+    }
+
+    Status::ko("Netplay is null")
+}
+
+#[no_mangle]
+pub extern "C" fn netplay_inputs_free(inputs: Inputs) {
+    unsafe {
+        if inputs.data.is_null() {
+            return;
+        }
+        let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, 0, 0);
     };
 }

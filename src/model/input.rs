@@ -1,6 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+use super::vector2f::Vector2f;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialOrd, PartialEq)]
 pub enum State {
@@ -28,17 +30,7 @@ unsafe impl Zeroable for State {}
 unsafe impl Pod for State {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialOrd, PartialEq)]
-pub struct Vector2f {
-    x: f32,
-    y: f32,
-}
-
-unsafe impl Zeroable for Vector2f {}
-unsafe impl Pod for Vector2f {}
-
-#[repr(C)]
-#[derive(Copy, Clone, PartialEq, Pod, Zeroable)]
+#[derive(Copy, Clone, PartialEq, Pod, Zeroable, Default)]
 pub struct Input {
     jump_check: State,
     jump_pressed: State,
