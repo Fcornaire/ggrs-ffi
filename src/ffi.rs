@@ -2,7 +2,10 @@ use std::{mem::forget, net::SocketAddr, os::raw::c_char};
 
 use crate::{
     model::{
-        ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests, state_ffi::GameStateFFI},
+        ffi::{
+            input_ffi::Inputs, netplay_request_ffi::NetplayRequests, network_stats::NetworkStats,
+            state_ffi::GameStateFFI,
+        },
         input::Input,
         netplay_request::NetplayRequest,
     },
@@ -249,15 +252,27 @@ pub unsafe extern "C" fn netplay_skip_frames() -> u32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_network_stats() -> Status {
+pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
     if NETPLAY.session().is_some() {
         let session = NETPLAY.session().take().unwrap();
-
-        let str = format!("{:?}", (*session).network_stats(1));
+        let stats = (*session).network_stats(1);
+        let str = format!("{:?}", stats);
         let str: &'static str = Box::leak(str.into_boxed_str());
+        if let Ok(net) = stats {
+            (*network_stats) = NetworkStats::new(
+                net.send_queue_len,
+                net.ping,
+                net.kbps_sent,
+                net.local_frames_behind,
+                net.remote_frames_behind,
+            );
+
+            NETPLAY.update_session(session);
+            return Status::msg(str);
+        }
 
         NETPLAY.update_session(session);
-        return Status::msg(str);
+        return Status::ko(str);
     }
 
     Status::ko("Netplay is null")
