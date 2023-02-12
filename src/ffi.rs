@@ -14,7 +14,7 @@ use std::ffi::CString;
 #[no_mangle]
 pub unsafe extern "C" fn netplay_init() -> Status {
     let local_port = 7000;
-    let remote_addr: SocketAddr = "192.168.1.19:7000".parse().unwrap();
+    let remote_addr: SocketAddr = "192.168.1.14:7000".parse().unwrap();
     let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
     let sess_ptr = Box::into_raw(Box::new(
@@ -48,18 +48,6 @@ pub unsafe extern "C" fn netplay_poll() -> Status {
 
     Status::ko("Netplay is null")
 }
-
-// #[no_mangle]
-// pub unsafe extern "C" fn netplay_add_local_input(input: Input) -> Status {
-//     if NETPLAY.session().is_some() {
-//         let session = NETPLAY.session().take().unwrap();
-//         (*session).add_local_input(0, input).unwrap();
-//         NETPLAY.update_session(session);
-//         return Status::ok();
-//     }
-
-//     Status::ko("Netplay is null")
-// }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_events() -> Events {
@@ -99,6 +87,8 @@ pub unsafe extern "C" fn netplay_events() -> Events {
                 }
 
                 GGRSEvent::WaitRecommendation { skip_frames } => {
+                    NETPLAY.update_skip_frames(skip_frames + 1);
+
                     let str = format!("WaitRecommendation skip frames {}", skip_frames);
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
@@ -111,6 +101,8 @@ pub unsafe extern "C" fn netplay_events() -> Events {
                 }
             }
         }
+
+        NETPLAY.minus_skip_frames();
 
         NETPLAY.update_session(session);
 
@@ -245,4 +237,28 @@ pub extern "C" fn netplay_inputs_free(inputs: Inputs) {
         }
         let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, 0, 0);
     };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_skip_frames() -> u32 {
+    if NETPLAY.session().is_some() {
+        return NETPLAY.skip_frames();
+    }
+
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_network_stats() -> Status {
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session().take().unwrap();
+
+        let str = format!("{:?}", (*session).network_stats(1));
+        let str: &'static str = Box::leak(str.into_boxed_str());
+
+        NETPLAY.update_session(session);
+        return Status::msg(str);
+    }
+
+    Status::ko("Netplay is null")
 }

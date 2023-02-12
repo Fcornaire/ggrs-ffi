@@ -9,6 +9,7 @@ pub struct Netplay {
     session: Option<*mut P2PSession<GGRSConfig>>,
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
+    skip_frames: u32,
 }
 
 impl Netplay {
@@ -17,11 +18,26 @@ impl Netplay {
             session,
             requests: vec![],
             game_state: GameState::new(vec![], 0),
+            skip_frames: 0,
         }
     }
 
     pub fn session(&self) -> Option<*mut P2PSession<GGRSConfig>> {
         self.session
+    }
+
+    pub fn skip_frames(&self) -> u32 {
+        self.skip_frames
+    }
+
+    pub fn update_skip_frames(&mut self, skip_frames: u32) {
+        self.skip_frames += skip_frames;
+    }
+
+    pub fn minus_skip_frames(&mut self) {
+        if self.skip_frames > 0 {
+            self.skip_frames -= 1;
+        }
     }
 
     pub fn game_state(&self) -> GameState {

@@ -43,6 +43,10 @@ impl Status {
         Self::new(Bool::True, "OK")
     }
 
+    pub fn msg(msg: &'static str) -> Self {
+        Self::new(Bool::True, msg)
+    }
+
     pub fn ko(info: &'static str) -> Self {
         Self::new(Bool::False, info)
     }
