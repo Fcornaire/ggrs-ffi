@@ -23,6 +23,19 @@ enum Bool {
     True = 1,
 }
 
+impl Bool {
+    pub fn is_true(&self) -> bool {
+        match self {
+            Bool::True => true,
+            Bool::False => false,
+        }
+    }
+
+    // pub fn is_false(&self) -> bool {
+    //     !self.is_true()
+    // }
+}
+
 #[repr(C)]
 pub struct Status {
     is_ok: Bool,
@@ -37,6 +50,10 @@ impl Status {
             is_ok,
             info: c_str.into_raw(),
         }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.is_ok.is_true()
     }
 
     pub fn ok() -> Self {

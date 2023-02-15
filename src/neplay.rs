@@ -17,7 +17,7 @@ impl Netplay {
         Self {
             session,
             requests: vec![],
-            game_state: GameState::new(vec![], 0),
+            game_state: GameState::new(vec![], 0, 0),
             skip_frames: 0,
         }
     }

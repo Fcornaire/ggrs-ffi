@@ -2,12 +2,10 @@ use std::{mem::forget, net::SocketAddr, os::raw::c_char};
 
 use crate::{
     model::{
-        ffi::{
-            input_ffi::Inputs, netplay_request_ffi::NetplayRequests, network_stats::NetworkStats,
-            state_ffi::GameStateFFI,
-        },
+        ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests, state_ffi::GameStateFFI},
         input::Input,
         netplay_request::NetplayRequest,
+        network_stats::NetworkStats,
     },
     Events, GGRSConfig, Status, NETPLAY,
 };
@@ -17,7 +15,7 @@ use std::ffi::CString;
 #[no_mangle]
 pub unsafe extern "C" fn netplay_init() -> Status {
     let local_port = 7000;
-    let remote_addr: SocketAddr = "192.168.1.14:7000".parse().unwrap();
+    let remote_addr: SocketAddr = "192.168.1.19:7000".parse().unwrap();
     let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
     let sess_ptr = Box::into_raw(Box::new(
@@ -198,10 +196,9 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: &GameStateFFI) -> Status {
+pub unsafe extern "C" fn netplay_save_game_state(game_state: *mut GameStateFFI) -> Status {
     if NETPLAY.session().is_some() {
-        let game_state = game_state_ffi.to_model(NETPLAY.game_state().frame());
-
+        let game_state = (*game_state).clone().to_model(NETPLAY.game_state().frame());
         return NETPLAY.handle_save_game_state_request(Some(game_state));
     }
 
@@ -224,9 +221,17 @@ pub unsafe extern "C" fn netplay_advance_game_state() -> Inputs {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_load_game_state() -> Status {
+pub unsafe extern "C" fn netplay_load_game_state(game_state: *mut GameStateFFI) -> Status {
     if NETPLAY.session().is_some() {
-        return NETPLAY.handle_load_game_state_request();
+        let result = NETPLAY.handle_load_game_state_request();
+
+        if result.is_ok() {
+            let to_load = NETPLAY.game_state();
+
+            (*game_state).update(to_load);
+        }
+
+        return result;
     }
 
     Status::ko("Netplay is null")
