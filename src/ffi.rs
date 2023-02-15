@@ -15,7 +15,7 @@ use std::ffi::CString;
 #[no_mangle]
 pub unsafe extern "C" fn netplay_init() -> Status {
     let local_port = 7000;
-    let remote_addr: SocketAddr = "192.168.1.19:7000".parse().unwrap();
+    let remote_addr: SocketAddr = "192.168.1.14:7000".parse().unwrap();
     let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
     let sess_ptr = Box::into_raw(Box::new(
