@@ -10,7 +10,5 @@ pub struct Player {
     state: PlayerStates,
     //facing: Facing,
     aiming: Boolean,
-    invisible: Boolean,
-    invis_opacity: f32,
     index: i32,
 }

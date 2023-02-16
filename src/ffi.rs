@@ -39,6 +39,26 @@ pub unsafe extern "C" fn netplay_init() -> Status {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn netplay_init_test() -> Status {
+    let sess_ptr = Box::into_raw(Box::new(
+        SessionBuilder::new()
+            .with_num_players(2)
+            .with_check_distance(2)
+            .with_input_delay(0)
+            .start_synctest_session()
+            .unwrap(),
+    ));
+
+    {
+        if NETPLAY.session().is_none() {
+            NETPLAY.update_session_test(sess_ptr);
+        }
+    }
+
+    Status::ok()
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn netplay_poll() -> Status {
     if NETPLAY.session().is_some() {
         let session = NETPLAY.session().take().unwrap();
@@ -162,6 +182,46 @@ pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
             };
         } else {
             NETPLAY.update_session(session);
+
+            return Status::ko(
+                "Netplay request is not empty. Finish using request before advancing",
+            );
+        }
+    }
+
+    Status::ko("Netplay is null")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_advance_frame_test(input: Input) -> Status {
+    if NETPLAY.session().is_some() {
+        let session = NETPLAY.session_test().take().unwrap();
+
+        (*session).add_local_input(0, input).unwrap();
+        (*session).add_local_input(0, Input::default()).unwrap();
+
+        if NETPLAY.requests().is_empty() {
+            match (*session).advance_frame() {
+                Ok(requests) => {
+                    NETPLAY.update_requests(requests);
+                    NETPLAY.update_session_test(session);
+
+                    return Status::ok();
+                }
+                Err(GGRSError::PredictionThreshold) => {
+                    NETPLAY.update_session_test(session);
+                    return Status::ko("PredictionThreshold");
+                }
+                Err(e) => {
+                    NETPLAY.update_session_test(session);
+                    return Status::ko(Box::leak(Box::new(format!(
+                        "GGRSError : {}",
+                        e.to_string()
+                    ))));
+                } //TODO: send error
+            };
+        } else {
+            NETPLAY.update_session_test(session);
 
             return Status::ko(
                 "Netplay request is not empty. Finish using request before advancing",

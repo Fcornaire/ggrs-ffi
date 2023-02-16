@@ -1,4 +1,4 @@
-use ggrs::{GGRSRequest, InputStatus, P2PSession};
+use ggrs::{GGRSRequest, InputStatus, P2PSession, SyncTestSession};
 
 use crate::{
     model::{input::Input, netplay_request::NetplayRequest, state::GameState},
@@ -7,15 +7,20 @@ use crate::{
 
 pub struct Netplay {
     session: Option<*mut P2PSession<GGRSConfig>>,
+    session_test: Option<*mut SyncTestSession<GGRSConfig>>,
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
     skip_frames: u32,
 }
 
 impl Netplay {
-    pub const fn new(session: Option<*mut P2PSession<GGRSConfig>>) -> Self {
+    pub const fn new(
+        session: Option<*mut P2PSession<GGRSConfig>>,
+        session_test: Option<*mut SyncTestSession<GGRSConfig>>,
+    ) -> Self {
         Self {
             session,
+            session_test,
             requests: vec![],
             game_state: GameState::new(vec![], 0, 0),
             skip_frames: 0,
@@ -24,6 +29,10 @@ impl Netplay {
 
     pub fn session(&self) -> Option<*mut P2PSession<GGRSConfig>> {
         self.session
+    }
+
+    pub fn session_test(&self) -> Option<*mut SyncTestSession<GGRSConfig>> {
+        self.session_test
     }
 
     pub fn skip_frames(&self) -> u32 {
@@ -46,6 +55,10 @@ impl Netplay {
 
     pub fn update_session(&mut self, session: *mut P2PSession<GGRSConfig>) {
         self.session = Some(session);
+    }
+
+    pub fn update_session_test(&mut self, session_test: *mut SyncTestSession<GGRSConfig>) {
+        self.session_test = Some(session_test);
     }
 
     pub fn requests(&self) -> Vec<NetplayRequest> {

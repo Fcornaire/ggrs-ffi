@@ -1,4 +1,5 @@
 use core::slice;
+use std::mem::forget;
 
 use crate::model::{player::Player, state::GameState};
 
@@ -20,9 +21,12 @@ impl GameStateFFI {
         GameState::new(players, self.players_len, frame)
     }
 
-    pub fn update(&mut self, gs: GameState) {
+    pub unsafe fn update(&mut self, gs: GameState) {
         self.frame = gs.frame();
-        self.players = gs.players().as_mut_ptr();
+        let mut players = gs.players();
+        self.players = players.as_mut_ptr();
+
+        //forget(players); //TODO: Huh
         self.players_len = gs.players_len();
     }
 }

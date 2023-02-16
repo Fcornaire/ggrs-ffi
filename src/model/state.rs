@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::player::Player;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct GameState {
     players: Vec<Player>,
     players_len: i32,

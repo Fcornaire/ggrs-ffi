@@ -7,7 +7,7 @@ pub mod ffi;
 pub mod model;
 pub mod neplay;
 
-static mut NETPLAY: Netplay = Netplay::new(None);
+static mut NETPLAY: Netplay = Netplay::new(None, None);
 
 #[derive(Debug)]
 pub struct GGRSConfig;
