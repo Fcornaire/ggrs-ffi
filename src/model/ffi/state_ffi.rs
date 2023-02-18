@@ -28,5 +28,6 @@ impl GameStateFFI {
 
         //forget(players); //TODO: Huh
         self.players_len = gs.players_len();
+        self.frame = gs.frame();
     }
 }

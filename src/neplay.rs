@@ -1,4 +1,4 @@
-use ggrs::{GGRSRequest, InputStatus, P2PSession, SyncTestSession};
+use ggrs::{GGRSEvent, GGRSRequest, InputStatus, P2PSession, SyncTestSession};
 
 use crate::{
     model::{input::Input, netplay_request::NetplayRequest, state::GameState},
@@ -29,6 +29,64 @@ impl Netplay {
 
     pub fn session(&self) -> Option<*mut P2PSession<GGRSConfig>> {
         self.session
+    }
+
+    pub unsafe fn events(&mut self) -> Vec<&'static str> {
+        let session = self.session.take().unwrap();
+
+        let mut events: Vec<&'static str> = vec![];
+
+        for (_, event) in (*session).events().enumerate() {
+            match event {
+                GGRSEvent::Synchronizing { addr, total, count } => {
+                    let str = format!(
+                        "Synchronizing addr {} total {} count {}",
+                        addr, total, count
+                    );
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+
+                    events.push(str)
+                }
+                GGRSEvent::Synchronized { addr } => {
+                    let str = format!("Synchronized addr {}", addr);
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+                    events.push(str)
+                }
+                GGRSEvent::Disconnected { addr: _ } => events.push("Disconnected"),
+
+                GGRSEvent::NetworkInterrupted {
+                    addr,
+                    disconnect_timeout,
+                } => {
+                    let str = format!(
+                        "NetworkInterrupted addr {} disconnect timout {}",
+                        addr, disconnect_timeout
+                    );
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+                    events.push(str)
+                }
+
+                GGRSEvent::WaitRecommendation { skip_frames } => {
+                    self.update_skip_frames(skip_frames + 1);
+
+                    let str = format!("WaitRecommendation skip frames {}", skip_frames);
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+                    events.push(str)
+                }
+
+                GGRSEvent::NetworkResumed { addr } => {
+                    let str = format!("NetworkResumed addr {}", addr);
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+                    events.push(str)
+                }
+            }
+        }
+
+        self.minus_skip_frames();
+
+        self.update_session(session);
+
+        events
     }
 
     pub fn session_test(&self) -> Option<*mut SyncTestSession<GGRSConfig>> {
