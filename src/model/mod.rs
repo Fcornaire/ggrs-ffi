@@ -1,5 +1,4 @@
 pub mod boolean;
-pub mod facing;
 pub mod ffi;
 pub mod input;
 pub mod netplay_request;

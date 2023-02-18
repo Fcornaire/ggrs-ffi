@@ -10,7 +10,6 @@ pub struct Player {
     wall_stick_max: f32,
     speed: Vector2f,
     state: PlayerStates,
-    //facing: Facing,
     aiming: Boolean,
     index: i32,
 }

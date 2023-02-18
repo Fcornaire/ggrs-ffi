@@ -1,82 +1,42 @@
-use std::{mem::forget, net::SocketAddr, os::raw::c_char};
+use std::{mem::forget, os::raw::c_char};
 
 use crate::{
     model::{
+        boolean::Boolean,
         ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests, state_ffi::GameStateFFI},
         input::Input,
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
     },
-    Events, GGRSConfig, Status, NETPLAY,
+    Events, Status, NETPLAY,
 };
-use ggrs::{GGRSError, PlayerType, SessionBuilder, UdpNonBlockingSocket};
 use std::ffi::CString;
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_init() -> Status {
-    let local_port = 7000;
-    let remote_addr: SocketAddr = "192.168.1.14:7000".parse().unwrap();
-    let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
+pub extern "C" fn netplay_init(is_test: Boolean) -> Status {
+    let mut np = NETPLAY.lock().unwrap();
 
-    let sess_ptr = Box::into_raw(Box::new(
-        SessionBuilder::<GGRSConfig>::new()
-            .with_num_players(2)
-            .add_player(PlayerType::Local, 0)
-            .unwrap()
-            .add_player(PlayerType::Remote(remote_addr), 1)
-            .unwrap()
-            .start_p2p_session(socket)
-            .unwrap(),
-    ));
-
-    {
-        if NETPLAY.session().is_none() {
-            NETPLAY.update_session(sess_ptr);
-        }
+    match np.init(is_test.is_on()) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
-
-    Status::ok()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_init_test() -> Status {
-    let sess_ptr = Box::into_raw(Box::new(
-        SessionBuilder::new()
-            .with_num_players(2)
-            .with_check_distance(2)
-            .with_input_delay(0)
-            .start_synctest_session()
-            .unwrap(),
-    ));
+pub extern "C" fn netplay_poll() -> Status {
+    let mut np = NETPLAY.lock().unwrap();
 
-    {
-        if NETPLAY.session().is_none() {
-            NETPLAY.update_session_test(sess_ptr);
-        }
+    match np.poll_remote() {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
-
-    Status::ok()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_poll() -> Status {
-    if NETPLAY.session().is_some() {
-        let session = NETPLAY.session().take().unwrap();
-        (*session).poll_remote_clients();
-        NETPLAY.update_session(session);
-        return Status::ok();
-    }
+pub extern "C" fn netplay_events() -> Events {
+    let mut np = NETPLAY.lock().unwrap();
 
-    Status::ko("Netplay is null")
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn netplay_events() -> Events {
-    if NETPLAY.session().is_some() {
-        return Events::new(NETPLAY.events());
-    }
-
-    Events::empty()
+    return Events::new(np.events());
 }
 
 #[no_mangle]
@@ -101,107 +61,30 @@ pub extern "C" fn netplay_events_free(events: Events) {
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
-    if NETPLAY.session().is_some() {
-        let session = NETPLAY.session().take().unwrap();
+    let mut np = NETPLAY.lock().unwrap();
 
-        (*session).add_local_input(0, input).unwrap();
-
-        if NETPLAY.requests().is_empty() {
-            match (*session).advance_frame() {
-                Ok(requests) => {
-                    NETPLAY.update_requests(requests);
-                    NETPLAY.update_session(session);
-
-                    return Status::ok();
-                }
-                Err(GGRSError::PredictionThreshold) => {
-                    NETPLAY.update_session(session);
-                    return Status::msg("PredictionThreshold");
-                }
-                Err(e) => {
-                    NETPLAY.update_session(session);
-                    return Status::ko(Box::leak(Box::new(format!(
-                        "GGRSError : {}",
-                        e.to_string()
-                    ))));
-                } //TODO: send error
-            };
-        } else {
-            NETPLAY.update_session(session);
-
-            return Status::ko(
-                "Netplay request is not empty. Finish using request before advancing",
-            );
+    match np.advance_frame(input) {
+        Ok(_) => Status::ok(),
+        Err(e) => {
+            if e.eq(&"PredictionThreshold") {
+                Status::ok()
+            } else {
+                Status::ko(Box::leak(e.into_boxed_str()))
+            }
         }
     }
-
-    Status::ko("Netplay is null")
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn netplay_advance_frame_test(input: Input) -> Status {
-    if NETPLAY.session_test().is_some() {
-        let session = NETPLAY.session_test().take().unwrap();
-
-        (*session).add_local_input(0, input).unwrap();
-        (*session).add_local_input(1, Input::default()).unwrap();
-
-        if NETPLAY.requests().is_empty() {
-            match (*session).advance_frame() {
-                Ok(requests) => {
-                    NETPLAY.update_requests(requests);
-                    NETPLAY.update_session_test(session);
-
-                    return Status::ok();
-                }
-                Err(GGRSError::PredictionThreshold) => {
-                    NETPLAY.update_session_test(session);
-                    return Status::msg("PredictionThreshold");
-                }
-                Err(e) => {
-                    NETPLAY.update_session_test(session);
-                    return Status::ko(Box::leak(Box::new(format!(
-                        "GGRSError : {}",
-                        e.to_string()
-                    ))));
-                } //TODO: send error
-            };
-        } else {
-            NETPLAY.update_session_test(session);
-
-            return Status::ko(
-                "Netplay request is not empty. Finish using request before advancing",
-            );
-        }
-    }
-
-    Status::ko("Netplay is null")
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_get_requests() -> NetplayRequests {
-    if NETPLAY.session().is_some() {
-        let requests = NETPLAY.requests();
-        let reqs = NetplayRequests::new(requests.clone());
+    let np = NETPLAY.lock().unwrap();
 
-        forget(requests);
+    let requests = np.requests();
+    let reqs = NetplayRequests::new(requests.clone());
 
-        return reqs;
-    }
-    NetplayRequests::empty()
-}
+    forget(requests);
 
-#[no_mangle]
-pub unsafe extern "C" fn netplay_get_requests_test() -> NetplayRequests {
-    if NETPLAY.session_test().is_some() {
-        let requests = NETPLAY.requests();
-        let reqs = NetplayRequests::new(requests.clone());
-
-        forget(requests);
-
-        return reqs;
-    }
-    NetplayRequests::empty()
+    return reqs;
 }
 
 #[no_mangle]
@@ -215,93 +98,35 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_save_game_state(game_state: *mut GameStateFFI) -> Status {
-    if NETPLAY.session().is_some() {
-        let game_state = (*game_state).clone().to_model(NETPLAY.game_state().frame());
-        return NETPLAY.handle_save_game_state_request(Some(game_state));
-    }
+pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: *mut GameStateFFI) -> Status {
+    let mut np = NETPLAY.lock().unwrap();
 
-    Status::ko("Netplay is null")
-}
+    let game_state = (*game_state_ffi).clone().to_model(np.game_state().frame());
 
-#[no_mangle]
-pub unsafe extern "C" fn netplay_save_game_state_test(game_state_ffi: *mut GameStateFFI) -> Status {
-    if NETPLAY.session_test().is_some() {
-        let game_state = (*game_state_ffi)
-            .clone()
-            .to_model(NETPLAY.game_state().frame());
-        let result = NETPLAY.handle_save_game_state_request(Some(game_state));
+    (*game_state_ffi).frame = np.game_state().frame(); //Useful for test atleast
 
-        (*game_state_ffi).frame = NETPLAY.game_state().frame();
-
-        return result;
-    }
-
-    Status::ko("Netplay is null")
+    return np.handle_save_game_state_request(game_state);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_advance_game_state() -> Inputs {
-    if NETPLAY.session().is_some() {
-        let inputs = NETPLAY.handle_advance_frame_request();
+    let mut np = NETPLAY.lock().unwrap();
 
-        let inputs_ffi = Inputs::new(inputs.clone());
+    let inputs = np.handle_advance_frame_request();
+    let inputs_ffi = Inputs::new(inputs.clone());
+    forget(inputs);
 
-        forget(inputs);
-
-        return inputs_ffi;
-    }
-
-    return Inputs::empty();
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn netplay_advance_game_state_test() -> Inputs {
-    if NETPLAY.session_test().is_some() {
-        let inputs = NETPLAY.handle_advance_frame_request();
-
-        let inputs_ffi = Inputs::new(inputs.clone());
-
-        forget(inputs);
-
-        return inputs_ffi;
-    }
-
-    return Inputs::empty();
+    return inputs_ffi;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_load_game_state(game_state: *mut GameStateFFI) -> Status {
-    if NETPLAY.session().is_some() {
-        let result = NETPLAY.handle_load_game_state_request();
+    let mut np = NETPLAY.lock().unwrap();
 
-        if result.is_ok() {
-            let to_load = NETPLAY.game_state();
-
-            (*game_state).update(to_load);
-        }
-
-        return result;
+    match np.handle_load_game_state_request(game_state) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
-
-    Status::ko("Netplay is null")
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn netplay_load_game_state_test(game_state: *mut GameStateFFI) -> Status {
-    if NETPLAY.session_test().is_some() {
-        let result = NETPLAY.handle_load_game_state_request();
-
-        if result.is_ok() {
-            let to_load = NETPLAY.game_state();
-
-            (*game_state).update(to_load);
-        }
-
-        return result;
-    }
-
-    Status::ko("Netplay is null")
 }
 
 #[no_mangle]
@@ -315,37 +140,18 @@ pub extern "C" fn netplay_inputs_free(inputs: Inputs) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_skip_frames() -> u32 {
-    if NETPLAY.session().is_some() {
-        return NETPLAY.skip_frames();
-    }
+pub extern "C" fn netplay_skip_frames() -> u32 {
+    let np = NETPLAY.lock().unwrap();
 
-    0
+    np.skip_frames()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
-    if NETPLAY.session().is_some() {
-        let session = NETPLAY.session().take().unwrap();
-        let stats = (*session).network_stats(1);
-        let str = format!("{:?}", stats);
-        let str: &'static str = Box::leak(str.into_boxed_str());
-        if let Ok(net) = stats {
-            (*network_stats) = NetworkStats::new(
-                net.send_queue_len,
-                net.ping,
-                net.kbps_sent,
-                net.local_frames_behind,
-                net.remote_frames_behind,
-            );
+    let mut np = NETPLAY.lock().unwrap();
 
-            NETPLAY.update_session(session);
-            return Status::msg(str);
-        }
-
-        NETPLAY.update_session(session);
-        return Status::ko(str);
+    match np.network_stats(network_stats) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
-
-    Status::ko("Netplay is null")
 }

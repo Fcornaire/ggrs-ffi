@@ -1,13 +1,17 @@
 use ggrs::Config;
+use lazy_static::lazy_static;
 use model::{input::Input, state::GameState};
 use neplay::Netplay;
-use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char};
+use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char, sync::Mutex};
 
 pub mod ffi;
 pub mod model;
 pub mod neplay;
+pub mod session;
 
-static mut NETPLAY: Netplay = Netplay::new(None, None);
+lazy_static! {
+    pub static ref NETPLAY: Mutex<Netplay> = Mutex::new(Netplay::new(None));
+}
 
 #[derive(Debug)]
 pub struct GGRSConfig;
