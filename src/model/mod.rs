@@ -1,4 +1,5 @@
 pub mod boolean;
+pub mod config;
 pub mod ffi;
 pub mod input;
 pub mod netplay_request;

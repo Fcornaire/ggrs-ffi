@@ -2,8 +2,10 @@ use std::{mem::forget, os::raw::c_char};
 
 use crate::{
     model::{
-        boolean::Boolean,
-        ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests, state_ffi::GameStateFFI},
+        ffi::{
+            config_ffi::ConfigFFI, input_ffi::Inputs, netplay_request_ffi::NetplayRequests,
+            state_ffi::GameStateFFI,
+        },
         input::Input,
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
@@ -13,10 +15,10 @@ use crate::{
 use std::ffi::CString;
 
 #[no_mangle]
-pub extern "C" fn netplay_init(is_test: Boolean) -> Status {
+pub unsafe extern "C" fn netplay_init(config_ffi: *mut ConfigFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.init(is_test.is_on()) {
+    match np.init(config_ffi) {
         Ok(_) => Status::ok(),
         Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
@@ -60,7 +62,7 @@ pub extern "C" fn netplay_events_free(events: Events) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
+pub extern "C" fn netplay_advance_frame(input: Input) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
     match np.advance_frame(input) {
@@ -76,7 +78,7 @@ pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_get_requests() -> NetplayRequests {
+pub extern "C" fn netplay_get_requests() -> NetplayRequests {
     let np = NETPLAY.lock().unwrap();
 
     let requests = np.requests();
@@ -109,7 +111,7 @@ pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: *mut GameStateF
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_advance_game_state() -> Inputs {
+pub extern "C" fn netplay_advance_game_state() -> Inputs {
     let mut np = NETPLAY.lock().unwrap();
 
     let inputs = np.handle_advance_frame_request();
@@ -130,13 +132,11 @@ pub unsafe extern "C" fn netplay_load_game_state(game_state: *mut GameStateFFI) 
 }
 
 #[no_mangle]
-pub extern "C" fn netplay_inputs_free(inputs: Inputs) {
-    unsafe {
-        if inputs.data.is_null() {
-            return;
-        }
-        let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, 0, 0);
-    };
+pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
+    if inputs.data.is_null() {
+        return;
+    }
+    let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, 0, 0);
 }
 
 #[no_mangle]

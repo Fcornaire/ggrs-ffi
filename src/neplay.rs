@@ -7,8 +7,11 @@ use ggrs::{
 
 use crate::{
     model::{
-        ffi::state_ffi::GameStateFFI, input::Input, netplay_request::NetplayRequest,
-        network_stats::NetworkStats, state::GameState,
+        ffi::{config_ffi::ConfigFFI, state_ffi::GameStateFFI},
+        input::Input,
+        netplay_request::NetplayRequest,
+        network_stats::NetworkStats,
+        state::GameState,
     },
     session::{Session, SessionType},
     GGRSConfig, Status,
@@ -43,35 +46,43 @@ impl Netplay {
         }
     }
 
-    pub fn init(&mut self, is_test: bool) -> Result<(), String> {
-        let local_port = 7000;
-        let remote_addr: SocketAddr = "192.168.1.14:7000".parse().unwrap();
-        let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
+    pub unsafe fn init(&mut self, config_ffi: *mut ConfigFFI) -> Result<(), String> {
+        let config = (*config_ffi).to_model();
 
-        self.is_test = is_test;
+        match config.remote_addr().parse::<SocketAddr>() {
+            Ok(socket) => {
+                let remote_addr: SocketAddr = socket;
+                let local_port = 7000;
+                let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
-        if !is_test {
-            let session = SessionBuilder::<GGRSConfig>::new()
-                .with_num_players(2)
-                .add_player(PlayerType::Local, 0)
-                .unwrap()
-                .add_player(PlayerType::Remote(remote_addr), 1)
-                .unwrap()
-                .start_p2p_session(socket)
-                .unwrap();
+                self.is_test = config.is_test_mode();
 
-            self.session = Some(SessionType::P2P(session));
-            Ok(())
-        } else {
-            let session: SyncTestSession<GGRSConfig> = SessionBuilder::new()
-                .with_num_players(2)
-                .with_check_distance(2)
-                .with_input_delay(0)
-                .start_synctest_session()
-                .unwrap();
+                if !config.is_test_mode() {
+                    let session = SessionBuilder::<GGRSConfig>::new()
+                        .with_num_players(2)
+                        .add_player(PlayerType::Local, 0)
+                        .unwrap()
+                        .add_player(PlayerType::Remote(remote_addr), 1)
+                        .unwrap()
+                        .with_input_delay(config.input_delay() as usize)
+                        .start_p2p_session(socket)
+                        .unwrap();
 
-            self.session = Some(SessionType::Test(session));
-            Ok(())
+                    self.session = Some(SessionType::P2P(session));
+                    Ok(())
+                } else {
+                    let session: SyncTestSession<GGRSConfig> = SessionBuilder::new()
+                        .with_num_players(2)
+                        .with_check_distance(config.test_check_distance() as usize)
+                        .with_input_delay(config.input_delay() as usize)
+                        .start_synctest_session()
+                        .unwrap();
+
+                    self.session = Some(SessionType::Test(session));
+                    Ok(())
+                }
+            }
+            Err(e) => Err(format!("Can't parse remote addr : {}", e)),
         }
     }
 

@@ -1,5 +1,4 @@
 use core::slice;
-use std::mem::forget;
 
 use crate::model::{player::Player, state::GameState};
 
