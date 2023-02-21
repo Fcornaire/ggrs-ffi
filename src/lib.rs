@@ -8,6 +8,7 @@ pub mod ffi;
 pub mod model;
 pub mod neplay;
 pub mod session;
+pub mod utils;
 
 lazy_static! {
     pub static ref NETPLAY: Mutex<Netplay> = Mutex::new(Netplay::new(None));

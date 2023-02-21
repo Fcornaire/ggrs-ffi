@@ -1,4 +1,5 @@
-use std::net::SocketAddr;
+use std::io::Write;
+use std::{fs, net::SocketAddr};
 
 use ggrs::{
     GGRSError, GGRSRequest, InputStatus, PlayerType, SessionBuilder, SyncTestSession,
@@ -192,6 +193,20 @@ impl Netplay {
                     cell.save(*frame, Some(clone), Some(checksum));
 
                     self.requests.remove(0);
+
+                    self.game_state = gs.clone();
+
+                    //Mostly for debug purpose, need refacto
+                    let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
+
+                    let mut file = fs::OpenOptions::new()
+                        .write(true)
+                        .append(true)
+                        .create(true)
+                        .open("gs.json")
+                        .expect("Unable to open");
+
+                    file.write_all(gs.as_bytes()).expect("Unable to write data");
 
                     Status::ok()
                 }
