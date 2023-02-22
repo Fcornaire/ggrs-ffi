@@ -6,5 +6,6 @@ pub mod netplay_request;
 pub mod network_stats;
 pub mod player;
 pub mod player_state;
+pub mod scheduler;
 pub mod state;
 pub mod vector2f;

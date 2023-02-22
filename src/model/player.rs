@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{boolean::Boolean, player_state::PlayerStates, vector2f::Vector2f};
+use super::{
+    boolean::Boolean, player_state::PlayerStates, scheduler::Scheduler, vector2f::Vector2f,
+};
 
 #[repr(C)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
@@ -11,9 +13,9 @@ pub struct Player {
     speed: Vector2f,
     state: PlayerStates,
     jump_buffer_counter: f32,
-    scheduler_actions: Vec<String>,
-    scheduler_counters: Vec<f32>,
-    scheduler_start_counters: Vec<i32>,
+    dodge_end_counter: f32,
+    dodge_stall_counter: f32,
+    scheduler: Scheduler,
     auto_move: i32,
     aiming: Boolean,
     index: i32,
@@ -52,16 +54,16 @@ impl Player {
         self.jump_buffer_counter
     }
 
-    pub fn scheduler_counters(&self) -> Vec<f32> {
-        self.scheduler_counters.clone()
+    pub fn dodge_end_counter(&self) -> f32 {
+        self.dodge_end_counter
     }
 
-    pub fn scheduler_start_counters(&self) -> Vec<i32> {
-        self.scheduler_start_counters.clone()
+    pub fn dodge_stall_counter(&self) -> f32 {
+        self.dodge_stall_counter
     }
 
-    pub fn scheduler_actions(&self) -> Vec<String> {
-        self.scheduler_actions.clone()
+    pub fn scheduler(&self) -> Scheduler {
+        self.scheduler.clone()
     }
 
     pub fn auto_move(&self) -> i32 {
@@ -119,18 +121,18 @@ impl PlayerBuilder {
         self
     }
 
-    pub fn scheduler_actions(mut self, scheduler_actions: Vec<String>) -> PlayerBuilder {
-        self.player.scheduler_actions = scheduler_actions;
+    pub fn dodge_end_counter(mut self, dodge_end_counter: f32) -> PlayerBuilder {
+        self.player.dodge_end_counter = dodge_end_counter;
         self
     }
 
-    pub fn scheduler_counters(mut self, scheduler_counters: Vec<f32>) -> PlayerBuilder {
-        self.player.scheduler_counters = scheduler_counters;
+    pub fn dodge_stall_counter(mut self, dodge_stall_counter: f32) -> PlayerBuilder {
+        self.player.dodge_stall_counter = dodge_stall_counter;
         self
     }
 
-    pub fn scheduler_start_counters(mut self, scheduler_start_counters: Vec<i32>) -> PlayerBuilder {
-        self.player.scheduler_start_counters = scheduler_start_counters;
+    pub fn scheduler(mut self, scheduler: Scheduler) -> PlayerBuilder {
+        self.player.scheduler = scheduler;
         self
     }
 
