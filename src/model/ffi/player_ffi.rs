@@ -3,8 +3,7 @@ use std::mem::forget;
 
 use crate::{
     model::{
-        boolean::Boolean, player::Player, player_state::PlayerStates, scheduler::Scheduler,
-        vector2f::Vector2f,
+        boolean::Boolean, player::Player, scheduler::Scheduler, state::State, vector2f::Vector2f,
     },
     utils::{
         char_c_array_to_vec_string, copy_vec_float_to_float_array_c, copy_vec_int_to_int_array_c,
@@ -12,7 +11,7 @@ use crate::{
     },
 };
 
-use super::scheduler_ffi::SchedulerFFI;
+use super::{scheduler_ffi::SchedulerFFI, state_ffi::StateFFI};
 
 #[repr(C)]
 #[derive(Clone, Debug)]
@@ -21,10 +20,11 @@ pub struct PlayerFFI {
     pub position_counter: Vector2f,
     pub wall_stick_max: f32,
     pub speed: Vector2f,
-    pub state: PlayerStates,
+    pub state: StateFFI,
     pub jump_buffer_counter: f32,
     pub dodge_end_counter: f32,
     pub dodge_stall_counter: f32,
+    pub dodge_cooldown: Boolean,
     pub scheduler: SchedulerFFI,
     pub auto_move: i32,
     pub aiming: Boolean,
@@ -61,9 +61,13 @@ impl PlayerFFI {
             .position_counter(self.position_counter)
             .wall_stick_max(self.wall_stick_max)
             .speed(self.speed)
-            .state(self.state)
+            .state(State::new(
+                self.state.current_state,
+                self.state.previous_state,
+            ))
             .dodge_end_counter(self.dodge_end_counter)
             .dodge_stall_counter(self.dodge_stall_counter)
+            .dodge_cooldown(self.dodge_cooldown)
             .jump_buffer_counter(self.jump_buffer_counter)
             .scheduler(Scheduler::new(
                 scheduler_actions,
@@ -81,10 +85,12 @@ impl PlayerFFI {
         self.position_counter = player.position_counter();
         self.wall_stick_max = player.wall_stick_max();
         self.speed = player.speed();
-        self.state = player.state();
+        self.state.current_state = player.state().current_state();
+        self.state.previous_state = player.state().previous_state();
         self.dodge_end_counter = player.dodge_end_counter();
         self.dodge_stall_counter = player.dodge_stall_counter();
         self.jump_buffer_counter = player.jump_buffer_counter();
+        self.dodge_cooldown = player.dodge_cooldown();
 
         copy_vec_string_to_char_c_array(
             &player.scheduler().scheduler_actions(),

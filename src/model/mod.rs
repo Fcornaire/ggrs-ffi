@@ -1,11 +1,12 @@
 pub mod boolean;
 pub mod config;
 pub mod ffi;
+pub mod game_state;
 pub mod input;
 pub mod netplay_request;
 pub mod network_stats;
 pub mod player;
-pub mod player_state;
+pub mod player_states;
 pub mod scheduler;
 pub mod state;
 pub mod vector2f;

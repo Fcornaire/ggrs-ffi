@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    boolean::Boolean, player_state::PlayerStates, scheduler::Scheduler, vector2f::Vector2f,
-};
+use super::{boolean::Boolean, scheduler::Scheduler, state::State, vector2f::Vector2f};
 
 #[repr(C)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
@@ -11,10 +9,11 @@ pub struct Player {
     position_counter: Vector2f,
     wall_stick_max: f32,
     speed: Vector2f,
-    state: PlayerStates,
+    state: State,
     jump_buffer_counter: f32,
     dodge_end_counter: f32,
     dodge_stall_counter: f32,
+    dodge_cooldown: Boolean,
     scheduler: Scheduler,
     auto_move: i32,
     aiming: Boolean,
@@ -46,7 +45,7 @@ impl Player {
         self.speed
     }
 
-    pub fn state(&self) -> PlayerStates {
+    pub fn state(&self) -> State {
         self.state
     }
 
@@ -60,6 +59,10 @@ impl Player {
 
     pub fn dodge_stall_counter(&self) -> f32 {
         self.dodge_stall_counter
+    }
+
+    pub fn dodge_cooldown(&self) -> Boolean {
+        self.dodge_cooldown
     }
 
     pub fn scheduler(&self) -> Scheduler {
@@ -111,7 +114,7 @@ impl PlayerBuilder {
         self
     }
 
-    pub fn state(mut self, state: PlayerStates) -> PlayerBuilder {
+    pub fn state(mut self, state: State) -> PlayerBuilder {
         self.player.state = state;
         self
     }
@@ -128,6 +131,11 @@ impl PlayerBuilder {
 
     pub fn dodge_stall_counter(mut self, dodge_stall_counter: f32) -> PlayerBuilder {
         self.player.dodge_stall_counter = dodge_stall_counter;
+        self
+    }
+
+    pub fn dodge_cooldown(mut self, dodge_cooldown: Boolean) -> PlayerBuilder {
+        self.player.dodge_cooldown = dodge_cooldown;
         self
     }
 

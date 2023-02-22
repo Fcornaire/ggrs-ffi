@@ -1,36 +1,27 @@
 use serde::{Deserialize, Serialize};
 
-use super::player::Player;
+use crate::model::player_states::PlayerStates;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct GameState {
-    players: Vec<Player>,
-    players_len: i32,
-    frame: i32,
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialOrd, PartialEq, Default)]
+pub struct State {
+    current_state: PlayerStates,
+    previous_state: PlayerStates,
 }
 
-impl GameState {
-    pub const fn new(players: Vec<Player>, players_len: i32, frame: i32) -> Self {
+impl State {
+    pub fn new(current_state: PlayerStates, previous_state: PlayerStates) -> Self {
         Self {
-            players,
-            players_len,
-            frame,
+            current_state,
+            previous_state,
         }
     }
 
-    pub fn frame(&self) -> i32 {
-        self.frame
+    pub fn current_state(&self) -> PlayerStates {
+        self.current_state.clone()
     }
 
-    pub fn players(&self) -> Vec<Player> {
-        self.players.clone()
-    }
-
-    pub fn players_len(&self) -> i32 {
-        self.players_len
-    }
-
-    pub fn add_frame(&mut self) {
-        self.frame += 1;
+    pub fn previous_state(&self) -> PlayerStates {
+        self.previous_state.clone()
     }
 }

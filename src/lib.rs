@@ -1,6 +1,6 @@
 use ggrs::Config;
 use lazy_static::lazy_static;
-use model::{input::Input, state::GameState};
+use model::{game_state::GameState, input::Input};
 use neplay::Netplay;
 use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char, sync::Mutex};
 

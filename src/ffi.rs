@@ -3,8 +3,8 @@ use std::{mem::forget, os::raw::c_char};
 use crate::{
     model::{
         ffi::{
-            config_ffi::ConfigFFI, input_ffi::Inputs, netplay_request_ffi::NetplayRequests,
-            state_ffi::GameStateFFI,
+            config_ffi::ConfigFFI, game_state_ffi::GameStateFFI, input_ffi::Inputs,
+            netplay_request_ffi::NetplayRequests,
         },
         input::Input,
         netplay_request::NetplayRequest,

@@ -8,11 +8,11 @@ use ggrs::{
 
 use crate::{
     model::{
-        ffi::{config_ffi::ConfigFFI, state_ffi::GameStateFFI},
+        ffi::{config_ffi::ConfigFFI, game_state_ffi::GameStateFFI},
+        game_state::GameState,
         input::Input,
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
-        state::GameState,
     },
     session::{Session, SessionType},
     GGRSConfig, Status,
