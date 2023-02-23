@@ -1,14 +1,14 @@
 use core::slice;
 use std::os::raw::{c_char, c_uchar};
 
-use crate::model::{boolean::Boolean, config::Config};
+use crate::model::{config::Config, on_off::OnOff};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ConfigFFI {
     remote_addr: *mut c_char,
     input_delay: i32,
-    is_test_mode: Boolean,
+    is_test_mode: OnOff,
     test_check_distance: i32,
 }
 

@@ -3,7 +3,8 @@ use std::mem::forget;
 
 use crate::{
     model::{
-        boolean::Boolean, player::Player, scheduler::Scheduler, state::State, vector2f::Vector2f,
+        bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player::Player, scheduler::Scheduler,
+        state::State, vector2f::Vector2f,
     },
     utils::{
         char_c_array_to_vec_string, copy_vec_float_to_float_array_c, copy_vec_int_to_int_array_c,
@@ -11,7 +12,7 @@ use crate::{
     },
 };
 
-use super::{scheduler_ffi::SchedulerFFI, state_ffi::StateFFI};
+use super::{dodge_slide::DodgeSlideFFI, scheduler_ffi::SchedulerFFI, state_ffi::StateFFI};
 
 #[repr(C)]
 #[derive(Clone, Debug)]
@@ -20,14 +21,17 @@ pub struct PlayerFFI {
     pub position_counter: Vector2f,
     pub wall_stick_max: f32,
     pub speed: Vector2f,
+    pub can_hyper: BoolFFI,
     pub state: StateFFI,
     pub jump_buffer_counter: f32,
     pub dodge_end_counter: f32,
     pub dodge_stall_counter: f32,
-    pub dodge_cooldown: Boolean,
+    pub dodge_slide: DodgeSlideFFI,
+    pub dodge_cooldown: BoolFFI,
     pub scheduler: SchedulerFFI,
     pub auto_move: i32,
-    pub aiming: Boolean,
+    pub aiming: BoolFFI,
+    pub can_var_jump: BoolFFI,
     pub index: i32,
 }
 
@@ -61,12 +65,17 @@ impl PlayerFFI {
             .position_counter(self.position_counter)
             .wall_stick_max(self.wall_stick_max)
             .speed(self.speed)
+            .can_hyper(self.can_hyper)
             .state(State::new(
                 self.state.current_state,
                 self.state.previous_state,
             ))
             .dodge_end_counter(self.dodge_end_counter)
             .dodge_stall_counter(self.dodge_stall_counter)
+            .dodge_slide(DodgeSlide::new(
+                self.dodge_slide.is_dodge_sliding,
+                self.dodge_slide.was_dodge_sliding,
+            ))
             .dodge_cooldown(self.dodge_cooldown)
             .jump_buffer_counter(self.jump_buffer_counter)
             .scheduler(Scheduler::new(
@@ -76,6 +85,7 @@ impl PlayerFFI {
             ))
             .auto_move(self.auto_move)
             .aiming(self.aiming)
+            .can_var_jump(self.can_var_jump)
             .index(self.index)
             .build()
     }
@@ -85,10 +95,13 @@ impl PlayerFFI {
         self.position_counter = player.position_counter();
         self.wall_stick_max = player.wall_stick_max();
         self.speed = player.speed();
+        self.can_hyper = player.can_hyper();
         self.state.current_state = player.state().current_state();
         self.state.previous_state = player.state().previous_state();
         self.dodge_end_counter = player.dodge_end_counter();
         self.dodge_stall_counter = player.dodge_stall_counter();
+        self.dodge_slide.is_dodge_sliding = player.dodge_slide().is_dodge_sliding();
+        self.dodge_slide.was_dodge_sliding = player.dodge_slide().was_dodge_sliding();
         self.jump_buffer_counter = player.jump_buffer_counter();
         self.dodge_cooldown = player.dodge_cooldown();
 
@@ -115,6 +128,7 @@ impl PlayerFFI {
 
         self.auto_move = player.auto_move();
         self.aiming = player.aiming();
+        self.can_var_jump = player.can_var_jump();
         self.index = player.index();
     }
 }

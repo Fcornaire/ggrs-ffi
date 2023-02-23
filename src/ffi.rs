@@ -99,15 +99,23 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
     };
 }
 
+//TODO: catch_unwind on other method for more safety/sending err msg
 #[no_mangle]
 pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: *mut GameStateFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    let game_state = (*game_state_ffi).clone().to_model(np.game_state().frame());
+    let result =
+        std::panic::catch_unwind(
+            move || match np.handle_save_game_state_request(game_state_ffi) {
+                Ok(_) => Status::ok(),
+                Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+            },
+        );
 
-    (*game_state_ffi).frame = np.game_state().frame(); //Useful for test atleast
-
-    return np.handle_save_game_state_request(game_state);
+    match result {
+        Ok(status) => status,
+        Err(e) => Status::ko(e.downcast_ref::<&str>().unwrap()),
+    }
 }
 
 #[no_mangle]

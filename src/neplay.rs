@@ -15,7 +15,7 @@ use crate::{
         network_stats::NetworkStats,
     },
     session::{Session, SessionType},
-    GGRSConfig, Status,
+    GGRSConfig,
 };
 
 pub struct Netplay {
@@ -179,7 +179,14 @@ impl Netplay {
         self.requests = requests;
     }
 
-    pub fn handle_save_game_state_request(&mut self, gs: GameState) -> Status {
+    pub unsafe fn handle_save_game_state_request(
+        &mut self,
+        game_state_ffi: *mut GameStateFFI,
+    ) -> Result<(), String> {
+        let gs = (*game_state_ffi).clone().to_model(self.game_state.frame());
+
+        (*game_state_ffi).frame = self.game_state.frame(); //Useful for test at least
+
         if !self.requests.is_empty() {
             let req = self.requests.first().unwrap();
 
@@ -208,18 +215,18 @@ impl Netplay {
 
                     file.write_all(gs.as_bytes()).expect("Unable to write data");
 
-                    Status::ok()
+                    Ok(())
                 }
                 _ => {
                     let err = format!(
                     "The last request is not a save game state req, recheck the last request saved, was : {:#?}",self.requests()
                 );
-                    Status::ko(Box::leak(err.into_boxed_str()))
+                    Err(err)
                 }
             };
         }
 
-        Status::ko("Requests are empty")
+        Err("Requests are empty".to_string())
     }
 
     pub fn handle_advance_frame_request(&mut self) -> Vec<Input> {

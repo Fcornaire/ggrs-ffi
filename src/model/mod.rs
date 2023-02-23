@@ -1,10 +1,12 @@
-pub mod boolean;
+pub mod bool_ffi;
 pub mod config;
+pub mod dodge_slide;
 pub mod ffi;
 pub mod game_state;
 pub mod input;
 pub mod netplay_request;
 pub mod network_stats;
+pub mod on_off;
 pub mod player;
 pub mod player_states;
 pub mod scheduler;

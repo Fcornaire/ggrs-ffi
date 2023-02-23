@@ -1,24 +1,28 @@
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialOrd, PartialEq)]
-pub enum Boolean {
+pub enum OnOff {
     IsOn = 1,
     IsOff = 0,
 }
 
-impl Default for Boolean {
+impl Default for OnOff {
     fn default() -> Self {
-        Boolean::IsOff
+        OnOff::IsOff
     }
 }
 
-impl Boolean {
+impl OnOff {
     pub fn is_on(&self) -> bool {
-        self == &Boolean::IsOn
+        self == &OnOff::IsOn
     }
 
     pub fn is_off(&self) -> bool {
-        self == &Boolean::IsOff
+        self == &OnOff::IsOff
     }
 }
+
+unsafe impl Zeroable for OnOff {}
+unsafe impl Pod for OnOff {}
