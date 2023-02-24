@@ -26,12 +26,15 @@ pub struct PlayerFFI {
     pub jump_buffer_counter: f32,
     pub dodge_end_counter: f32,
     pub dodge_stall_counter: f32,
+    pub jump_grace_counter: f32,
     pub dodge_slide: DodgeSlideFFI,
     pub dodge_cooldown: BoolFFI,
     pub scheduler: SchedulerFFI,
     pub auto_move: i32,
     pub aiming: BoolFFI,
     pub can_var_jump: BoolFFI,
+    pub on_ground: BoolFFI,
+    pub duck_slip_counter: f32,
     pub index: i32,
 }
 
@@ -72,6 +75,7 @@ impl PlayerFFI {
             ))
             .dodge_end_counter(self.dodge_end_counter)
             .dodge_stall_counter(self.dodge_stall_counter)
+            .jump_grace_counter(self.jump_grace_counter)
             .dodge_slide(DodgeSlide::new(
                 self.dodge_slide.is_dodge_sliding,
                 self.dodge_slide.was_dodge_sliding,
@@ -86,6 +90,8 @@ impl PlayerFFI {
             .auto_move(self.auto_move)
             .aiming(self.aiming)
             .can_var_jump(self.can_var_jump)
+            .on_ground(self.on_ground)
+            .duck_slip_counter(self.duck_slip_counter)
             .index(self.index)
             .build()
     }
@@ -100,6 +106,7 @@ impl PlayerFFI {
         self.state.previous_state = player.state().previous_state();
         self.dodge_end_counter = player.dodge_end_counter();
         self.dodge_stall_counter = player.dodge_stall_counter();
+        self.jump_grace_counter = player.jump_grace_counter();
         self.dodge_slide.is_dodge_sliding = player.dodge_slide().is_dodge_sliding();
         self.dodge_slide.was_dodge_sliding = player.dodge_slide().was_dodge_sliding();
         self.jump_buffer_counter = player.jump_buffer_counter();
@@ -129,6 +136,8 @@ impl PlayerFFI {
         self.auto_move = player.auto_move();
         self.aiming = player.aiming();
         self.can_var_jump = player.can_var_jump();
+        self.on_ground = player.on_ground();
+        self.duck_slip_counter = player.duck_slip_counter();
         self.index = player.index();
     }
 }

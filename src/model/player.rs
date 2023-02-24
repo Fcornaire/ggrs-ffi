@@ -17,12 +17,15 @@ pub struct Player {
     jump_buffer_counter: f32,
     dodge_end_counter: f32,
     dodge_stall_counter: f32,
+    jump_grace_counter: f32,
     dodge_slide: DodgeSlide,
     dodge_cooldown: BoolFFI,
     scheduler: Scheduler,
     auto_move: i32,
     aiming: BoolFFI,
     can_var_jump: BoolFFI,
+    on_ground: BoolFFI,
+    duck_slip_counter: f32,
     index: i32,
 }
 
@@ -67,6 +70,10 @@ impl Player {
         self.dodge_end_counter
     }
 
+    pub fn jump_grace_counter(&self) -> f32 {
+        self.jump_grace_counter
+    }
+
     pub fn dodge_slide(&self) -> DodgeSlide {
         self.dodge_slide
     }
@@ -93,6 +100,14 @@ impl Player {
 
     pub fn can_var_jump(&self) -> BoolFFI {
         self.can_var_jump
+    }
+
+    pub fn on_ground(&self) -> BoolFFI {
+        self.on_ground
+    }
+
+    pub fn duck_slip_counter(&self) -> f32 {
+        self.duck_slip_counter
     }
 
     pub fn index(&self) -> i32 {
@@ -152,6 +167,11 @@ impl PlayerBuilder {
         self
     }
 
+    pub fn jump_grace_counter(mut self, jump_grace_counter: f32) -> PlayerBuilder {
+        self.player.jump_grace_counter = jump_grace_counter;
+        self
+    }
+
     pub fn dodge_slide(mut self, dodge_slide: DodgeSlide) -> PlayerBuilder {
         self.player.dodge_slide = dodge_slide;
         self
@@ -184,6 +204,16 @@ impl PlayerBuilder {
 
     pub fn can_var_jump(mut self, can_var_jump: BoolFFI) -> PlayerBuilder {
         self.player.can_var_jump = can_var_jump;
+        self
+    }
+
+    pub fn on_ground(mut self, on_ground: BoolFFI) -> PlayerBuilder {
+        self.player.on_ground = on_ground;
+        self
+    }
+
+    pub fn duck_slip_counter(mut self, duck_slip_counter: f32) -> PlayerBuilder {
+        self.player.duck_slip_counter = duck_slip_counter;
         self
     }
 
