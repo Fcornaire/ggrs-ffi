@@ -32,7 +32,7 @@ impl Netplay {
             session,
             is_test: false,
             requests: vec![],
-            game_state: GameState::new(vec![], 0, 0),
+            game_state: GameState::new(vec![], 0, vec![], 0, 0),
             skip_frames: 0,
         }
     }
@@ -271,11 +271,11 @@ impl Netplay {
                     let to_load: GameState = cell
                         .load()
                         .expect("No data found when trying to load game state");
-                    self.game_state = to_load;
+                    self.game_state = to_load.clone();
 
                     self.requests.remove(0);
 
-                    (*game_state_ffi).update(self.game_state.clone());
+                    (*game_state_ffi).update(to_load.clone());
 
                     Ok(())
                 }

@@ -133,9 +133,23 @@ pub extern "C" fn netplay_advance_game_state() -> Inputs {
 pub unsafe extern "C" fn netplay_load_game_state(game_state: *mut GameStateFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.handle_load_game_state_request(game_state) {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+    let result =
+        std::panic::catch_unwind(
+            move || match np.handle_load_game_state_request(game_state) {
+                Ok(_) => Status::ok(),
+                Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+            },
+        );
+
+    match result {
+        Ok(status) => status,
+        Err(e) => {
+            if let Some(er) = e.downcast_ref::<&str>() {
+                return Status::ko(er);
+            } else {
+                return Status::ko("Unkown error");
+            }
+        }
     }
 }
 

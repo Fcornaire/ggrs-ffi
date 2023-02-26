@@ -1,3 +1,5 @@
+pub mod arrow;
+pub mod arrow_types;
 pub mod bool_ffi;
 pub mod config;
 pub mod dodge_slide;
@@ -8,6 +10,7 @@ pub mod netplay_request;
 pub mod network_stats;
 pub mod on_off;
 pub mod player;
+pub mod player_arrows_Inventory;
 pub mod player_states;
 pub mod scheduler;
 pub mod state;

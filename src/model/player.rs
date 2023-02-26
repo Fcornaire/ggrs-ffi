@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, scheduler::Scheduler, state::State,
-    vector2f::Vector2f,
+    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player_arrows_Inventory::PlayerArrowsInventory,
+    scheduler::Scheduler, state::State, vector2f::Vector2f,
 };
 
 #[repr(C)]
@@ -10,6 +10,7 @@ use super::{
 pub struct Player {
     position: Vector2f,
     position_counter: Vector2f,
+    arrows_inventory: PlayerArrowsInventory,
     wall_stick_max: f32,
     speed: Vector2f,
     can_hyper: BoolFFI,
@@ -48,6 +49,10 @@ impl Player {
 
     pub fn position_counter(&self) -> Vector2f {
         self.position_counter
+    }
+
+    pub fn arrows_inventory(&self) -> PlayerArrowsInventory {
+        self.arrows_inventory
     }
 
     pub fn speed(&self) -> Vector2f {
@@ -134,6 +139,11 @@ impl PlayerBuilder {
 
     pub fn position_counter(mut self, position_counter: Vector2f) -> PlayerBuilder {
         self.player.position_counter = position_counter;
+        self
+    }
+
+    pub fn arrows_inventory(mut self, arrows_inventory: PlayerArrowsInventory) -> PlayerBuilder {
+        self.player.arrows_inventory = arrows_inventory;
         self
     }
 

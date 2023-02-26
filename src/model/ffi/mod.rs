@@ -1,3 +1,4 @@
+pub mod arrow_ffi;
 pub mod config_ffi;
 pub mod dodge_slide;
 pub mod game_state_ffi;
