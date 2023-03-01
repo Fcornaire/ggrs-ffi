@@ -20,9 +20,11 @@ use super::{dodge_slide::DodgeSlideFFI, scheduler_ffi::SchedulerFFI, state_ffi::
 pub struct PlayerFFI {
     pub position: Vector2f,
     pub position_counter: Vector2f,
+    pub facing: i32,
     pub arrows_inventory: PlayerArrowsInventory,
     pub wall_stick_max: f32,
     pub speed: Vector2f,
+    pub flap_gravity: f32,
     pub can_hyper: BoolFFI,
     pub state: StateFFI,
     pub jump_buffer_counter: f32,
@@ -68,9 +70,11 @@ impl PlayerFFI {
         Player::builder()
             .position(self.position)
             .position_counter(self.position_counter)
+            .facing(self.facing)
             .arrows_inventory(self.arrows_inventory)
             .wall_stick_max(self.wall_stick_max)
             .speed(self.speed)
+            .flap_gravity(self.flap_gravity)
             .can_hyper(self.can_hyper)
             .state(State::new(
                 self.state.current_state,
@@ -102,9 +106,11 @@ impl PlayerFFI {
     pub fn update(&mut self, player: Player) {
         self.position = player.position();
         self.position_counter = player.position_counter();
+        self.facing = player.facing();
         self.arrows_inventory = player.arrows_inventory();
         self.wall_stick_max = player.wall_stick_max();
         self.speed = player.speed();
+        self.flap_gravity = player.flap_gravity();
         self.can_hyper = player.can_hyper();
         self.state.current_state = player.state().current_state();
         self.state.previous_state = player.state().previous_state();

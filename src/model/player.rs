@@ -10,9 +10,11 @@ use super::{
 pub struct Player {
     position: Vector2f,
     position_counter: Vector2f,
+    facing: i32,
     arrows_inventory: PlayerArrowsInventory,
     wall_stick_max: f32,
     speed: Vector2f,
+    flap_gravity: f32,
     can_hyper: BoolFFI,
     state: State,
     jump_buffer_counter: f32,
@@ -43,6 +45,10 @@ impl Player {
         self.position
     }
 
+    pub fn facing(&self) -> i32 {
+        self.facing
+    }
+
     pub fn wall_stick_max(&self) -> f32 {
         self.wall_stick_max
     }
@@ -59,6 +65,9 @@ impl Player {
         self.speed
     }
 
+    pub fn flap_gravity(&self) -> f32 {
+        self.flap_gravity
+    }
     pub fn can_hyper(&self) -> BoolFFI {
         self.can_hyper
     }
@@ -142,6 +151,11 @@ impl PlayerBuilder {
         self
     }
 
+    pub fn facing(mut self, facing: i32) -> PlayerBuilder {
+        self.player.facing = facing;
+        self
+    }
+
     pub fn arrows_inventory(mut self, arrows_inventory: PlayerArrowsInventory) -> PlayerBuilder {
         self.player.arrows_inventory = arrows_inventory;
         self
@@ -154,6 +168,11 @@ impl PlayerBuilder {
 
     pub fn speed(mut self, speed: Vector2f) -> PlayerBuilder {
         self.player.speed = speed;
+        self
+    }
+
+    pub fn flap_gravity(mut self, flap_gravity: f32) -> PlayerBuilder {
+        self.player.flap_gravity = flap_gravity;
         self
     }
 
