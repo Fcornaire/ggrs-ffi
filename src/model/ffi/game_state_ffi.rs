@@ -1,5 +1,5 @@
 use core::slice;
-use std::{fs, io::Write, mem::forget};
+use std::mem::forget;
 
 use crate::model::{arrow::Arrow, game_state::GameState};
 

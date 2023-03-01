@@ -4,7 +4,7 @@ use std::mem::forget;
 use crate::{
     model::{
         bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player::Player,
-        player_arrows_Inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
+        player_arrows_inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
         vector2f::Vector2f,
     },
     utils::{

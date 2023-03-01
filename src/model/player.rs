@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player_arrows_Inventory::PlayerArrowsInventory,
+    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player_arrows_inventory::PlayerArrowsInventory,
     scheduler::Scheduler, state::State, vector2f::Vector2f,
 };
 
