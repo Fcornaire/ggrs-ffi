@@ -7,10 +7,12 @@ use super::{arrow_states::ArrowStates, arrow_types::ArrowTypes, vector2f::Vector
 pub struct Arrow {
     position: Vector2f,
     position_counter: Vector2f,
+    direction: f32,
     speed: Vector2f,
     shooting_counter: f32,
     state: ArrowStates,
     arrow_type: ArrowTypes,
+    stuck_direction: Vector2f,
     player_index: i32,
     index: i32,
 }
@@ -32,6 +34,10 @@ impl Arrow {
         self.position_counter
     }
 
+    pub fn direction(&self) -> f32 {
+        self.direction
+    }
+
     pub fn shooting_counter(&self) -> f32 {
         self.shooting_counter
     }
@@ -46,6 +52,10 @@ impl Arrow {
 
     pub fn arrow_type(&self) -> ArrowTypes {
         self.arrow_type
+    }
+
+    pub fn stuck_direction(&self) -> Vector2f {
+        self.stuck_direction
     }
 
     pub fn player_index(&self) -> i32 {
@@ -79,6 +89,11 @@ impl ArrowBuilder {
         self
     }
 
+    pub fn direction(mut self, direction: f32) -> ArrowBuilder {
+        self.arrow.direction = direction;
+        self
+    }
+
     pub fn speed(mut self, speed: Vector2f) -> ArrowBuilder {
         self.arrow.speed = speed;
         self
@@ -96,6 +111,11 @@ impl ArrowBuilder {
 
     pub fn arrow_type(mut self, arrow_type: ArrowTypes) -> ArrowBuilder {
         self.arrow.arrow_type = arrow_type;
+        self
+    }
+
+    pub fn stuck_direction(mut self, stuck_direction: Vector2f) -> ArrowBuilder {
+        self.arrow.stuck_direction = stuck_direction;
         self
     }
 
