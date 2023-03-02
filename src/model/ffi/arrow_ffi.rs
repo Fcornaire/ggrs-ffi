@@ -7,8 +7,8 @@ use crate::model::{
 pub struct ArrowFFI {
     pub position: Vector2f,
     pub position_counter: Vector2f,
-    pub direction: f32,
     pub speed: Vector2f,
+    pub direction: f32,
     pub shooting_counter: f32,
     pub state: ArrowStates,
     pub arrow_type: ArrowTypes,
