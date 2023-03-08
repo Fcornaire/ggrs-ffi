@@ -10,11 +10,13 @@ pub struct Arrow {
     direction: f32,
     speed: Vector2f,
     shooting_counter: f32,
+    cannot_pickup_counter: f32,
+    cannot_catch_counter: f32,
     state: ArrowStates,
     arrow_type: ArrowTypes,
     stuck_direction: Vector2f,
     player_index: i32,
-    index: i32,
+    id: String,
 }
 
 impl Arrow {
@@ -42,6 +44,14 @@ impl Arrow {
         self.shooting_counter
     }
 
+    pub fn cannot_pickup_counter(&self) -> f32 {
+        self.cannot_pickup_counter
+    }
+
+    pub fn cannot_catch_counter(&self) -> f32 {
+        self.cannot_catch_counter
+    }
+
     pub fn speed(&self) -> Vector2f {
         self.speed
     }
@@ -62,8 +72,8 @@ impl Arrow {
         self.player_index
     }
 
-    pub fn index(&self) -> i32 {
-        self.index
+    pub fn id(&self) -> String {
+        self.id.clone()
     }
 }
 
@@ -104,6 +114,16 @@ impl ArrowBuilder {
         self
     }
 
+    pub fn cannot_pickup_counter(mut self, cannot_pickup_counter: f32) -> ArrowBuilder {
+        self.arrow.cannot_pickup_counter = cannot_pickup_counter;
+        self
+    }
+
+    pub fn cannot_catch_counter(mut self, cannot_catch_counter: f32) -> ArrowBuilder {
+        self.arrow.cannot_catch_counter = cannot_catch_counter;
+        self
+    }
+
     pub fn state(mut self, state: ArrowStates) -> ArrowBuilder {
         self.arrow.state = state;
         self
@@ -124,8 +144,8 @@ impl ArrowBuilder {
         self
     }
 
-    pub fn index(mut self, index: i32) -> ArrowBuilder {
-        self.arrow.index = index;
+    pub fn id(mut self, id: String) -> ArrowBuilder {
+        self.arrow.id = id;
         self
     }
 

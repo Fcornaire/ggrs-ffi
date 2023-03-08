@@ -204,16 +204,16 @@ impl Netplay {
                     self.game_state = gs.clone();
 
                     //Mostly for debug purpose, need refacto
-                    let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
+                    // let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
 
-                    let mut file = fs::OpenOptions::new()
-                        .write(true)
-                        .append(true)
-                        .create(true)
-                        .open("gs.json")
-                        .expect("Unable to open");
+                    // let mut file = fs::OpenOptions::new()
+                    //     .write(true)
+                    //     .append(true)
+                    //     .create(true)
+                    //     .open("gs.json")
+                    //     .expect("Unable to open");
 
-                    file.write_all(gs.as_bytes()).expect("Unable to write data");
+                    // file.write_all(gs.as_bytes()).expect("Unable to write data");
 
                     Ok(())
                 }

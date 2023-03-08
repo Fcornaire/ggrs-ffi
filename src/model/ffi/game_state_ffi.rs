@@ -31,10 +31,17 @@ impl GameStateFFI {
 
         let arrows: Vec<Arrow> = arrows_ffi
             .iter()
+            .filter(|arrow_ffi| !arrow_ffi.is_empty_arrow())
             .map(|arrow_ffi| arrow_ffi.to_model())
             .collect();
 
-        GameState::new(players, self.players_len, arrows, self.arrows_len, frame)
+        GameState::new(
+            players,
+            self.players_len,
+            arrows.clone(),
+            arrows.clone().len().try_into().unwrap(),
+            frame,
+        )
     }
 
     pub unsafe fn update(&mut self, gs: GameState) {

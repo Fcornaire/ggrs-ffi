@@ -1,6 +1,9 @@
+use core::slice;
 use std::ffi::{CStr, CString};
 use std::mem;
 use std::os::raw::{c_char, c_float, c_int};
+
+use uuid::Uuid;
 
 pub fn char_c_array_to_vec_string(array_c: *mut *mut c_char) -> Vec<String> {
     let mut resultat = Vec::new();
@@ -53,4 +56,18 @@ pub fn copy_vec_float_to_float_array_c(vec_float: &Vec<f32>, array_c: *mut c_flo
     for (i, float) in vec_float.iter().enumerate() {
         copy_float_to_array_c(*float, array_c, i);
     }
+}
+
+pub fn byte_array_to_guid(byte_array_ptr: *mut u8) -> Uuid {
+    let guid_vec = unsafe { slice::from_raw_parts(byte_array_ptr, 16) };
+    let uuid = Uuid::from_slice(&guid_vec).unwrap();
+
+    uuid
+}
+
+pub fn string_guid_to_byte_array(guid: String) -> [u8; 16] {
+    Uuid::parse_str(&guid.to_string())
+        .unwrap()
+        .as_bytes()
+        .clone()
 }

@@ -1,5 +1,8 @@
-use crate::model::{
-    arrow::Arrow, arrow_states::ArrowStates, arrow_types::ArrowTypes, vector2f::Vector2f,
+use core::slice;
+
+use crate::{
+    model::{arrow::Arrow, arrow_states::ArrowStates, arrow_types::ArrowTypes, vector2f::Vector2f},
+    utils::{byte_array_to_guid, string_guid_to_byte_array},
 };
 
 #[repr(C)]
@@ -10,39 +13,53 @@ pub struct ArrowFFI {
     pub speed: Vector2f,
     pub direction: f32,
     pub shooting_counter: f32,
+    pub cannot_pickup_counter: f32,
+    pub cannot_catch_counter: f32,
     pub state: ArrowStates,
     pub arrow_type: ArrowTypes,
     pub stuck_direction: Vector2f,
     pub player_index: i32,
-    pub index: i32,
+    pub id: *mut u8,
 }
 
 impl ArrowFFI {
     pub unsafe fn to_model(&self) -> Arrow {
+        let guid = byte_array_to_guid(self.id);
+
         Arrow::builder()
             .position(self.position)
             .position_counter(self.position_counter)
             .direction(self.direction)
             .speed(self.speed)
             .shooting_counter(self.shooting_counter)
+            .cannot_pickup_counter(self.cannot_pickup_counter)
+            .cannot_catch_counter(self.cannot_catch_counter)
             .state(self.state)
             .arrow_type(self.arrow_type)
             .stuck_direction(self.stuck_direction)
             .player_index(self.player_index)
-            .index(self.index)
+            .id(guid.to_string())
             .build()
     }
 
-    pub fn update(&mut self, arrow: Arrow) {
+    pub unsafe fn update(&mut self, arrow: Arrow) {
         self.position = arrow.position();
         self.position_counter = arrow.position_counter();
         self.direction = arrow.direction();
         self.speed = arrow.speed();
         self.shooting_counter = arrow.shooting_counter();
+        self.cannot_pickup_counter = arrow.cannot_pickup_counter();
+        self.cannot_catch_counter = arrow.cannot_catch_counter();
         self.state = arrow.state();
         self.arrow_type = arrow.arrow_type();
         self.stuck_direction = arrow.stuck_direction();
         self.player_index = arrow.player_index();
-        self.index = arrow.index();
+
+        let bytes = string_guid_to_byte_array(arrow.id());
+        slice::from_raw_parts_mut(self.id, 16).copy_from_slice(&bytes);
+    }
+
+    pub fn is_empty_arrow(&self) -> bool {
+        self.position.x == -1.0 && self.position.y == -1.0
     }
 }
