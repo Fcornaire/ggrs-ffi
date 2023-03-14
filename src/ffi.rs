@@ -57,7 +57,7 @@ pub extern "C" fn netplay_events_free(events: Events) {
         if events.data.is_null() {
             return;
         }
-        let _ = Vec::from_raw_parts(events.data as *mut Events, 0, 0);
+        let _ = Vec::from_raw_parts(events.data as *mut Events, events.len, events.cap);
     };
 }
 
@@ -95,7 +95,11 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
         if requests.data.is_null() {
             return;
         }
-        let _ = Vec::from_raw_parts(requests.data as *mut NetplayRequest, 0, 0);
+        let _ = Vec::from_raw_parts(
+            requests.data as *mut NetplayRequest,
+            requests.len,
+            requests.len,
+        );
     };
 }
 
@@ -158,7 +162,7 @@ pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
     if inputs.data.is_null() {
         return;
     }
-    let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, 0, 0);
+    let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, inputs.len, inputs.len);
 }
 
 #[no_mangle]
