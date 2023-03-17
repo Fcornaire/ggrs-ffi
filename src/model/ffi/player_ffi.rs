@@ -17,6 +17,7 @@ use super::{dodge_slide::DodgeSlideFFI, scheduler_ffi::SchedulerFFI, state_ffi::
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct PlayerFFI {
+    pub is_dead: BoolFFI,
     pub position: Vector2f,
     pub position_counter: Vector2f,
     pub facing: i32,
@@ -47,7 +48,10 @@ impl PlayerFFI {
         assert!(!self.scheduler.scheduler_counters.is_null());
         assert!(!self.scheduler.scheduler_start_counters.is_null());
 
-        let scheduler_actions = char_c_array_to_vec_string(self.scheduler.scheduler_actions);
+        let scheduler_actions = char_c_array_to_vec_string(
+            self.scheduler.scheduler_actions,
+            self.scheduler.scheduler_actions_length as usize,
+        );
         let scheduler_counters = {
             let slice = slice::from_raw_parts(
                 self.scheduler.scheduler_counters,
@@ -67,6 +71,7 @@ impl PlayerFFI {
         };
 
         Player::builder()
+            .is_dead(self.is_dead)
             .position(self.position)
             .position_counter(self.position_counter)
             .facing(self.facing)
@@ -103,6 +108,7 @@ impl PlayerFFI {
     }
 
     pub fn update(&mut self, player: Player) {
+        self.is_dead = player.is_dead();
         self.position = player.position();
         self.position_counter = player.position_counter();
         self.facing = player.facing();

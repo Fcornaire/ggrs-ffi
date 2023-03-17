@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::time::Duration;
 use std::{fs, net::SocketAddr};
 
 use ggrs::{
@@ -66,6 +67,7 @@ impl Netplay {
                         .add_player(PlayerType::Remote(remote_addr), 1)
                         .unwrap()
                         .with_input_delay(config.input_delay() as usize)
+                        .with_disconnect_timeout(Duration::from_secs(10))
                         .start_p2p_session(socket)
                         .unwrap();
 

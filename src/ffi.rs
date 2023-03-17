@@ -67,13 +67,7 @@ pub extern "C" fn netplay_advance_frame(input: Input) -> Status {
 
     match np.advance_frame(input) {
         Ok(_) => Status::ok(),
-        Err(e) => {
-            if e.eq(&"PredictionThreshold") {
-                Status::ok()
-            } else {
-                Status::ko(Box::leak(e.into_boxed_str()))
-            }
-        }
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
 }
 

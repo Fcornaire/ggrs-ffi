@@ -8,6 +8,7 @@ use super::{
 #[repr(C)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Player {
+    is_dead: BoolFFI,
     position: Vector2f,
     position_counter: Vector2f,
     facing: i32,
@@ -35,6 +36,10 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn is_dead(&self) -> BoolFFI {
+        self.is_dead
     }
 
     pub fn builder() -> PlayerBuilder {
@@ -68,6 +73,7 @@ impl Player {
     pub fn flap_gravity(&self) -> f32 {
         self.flap_gravity
     }
+
     pub fn can_hyper(&self) -> BoolFFI {
         self.can_hyper
     }
@@ -139,6 +145,11 @@ impl PlayerBuilder {
         PlayerBuilder {
             player: Player::new(),
         }
+    }
+
+    pub fn is_dead(mut self, is_dead: BoolFFI) -> PlayerBuilder {
+        self.player.is_dead = is_dead;
+        self
     }
 
     pub fn position(mut self, position: Vector2f) -> PlayerBuilder {

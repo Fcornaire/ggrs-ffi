@@ -3,14 +3,14 @@ use std::ffi::{CStr, CString};
 use std::mem;
 use std::os::raw::{c_char, c_float, c_int};
 
+use libc::size_t;
 use uuid::Uuid;
 
-pub fn char_c_array_to_vec_string(array_c: *mut *mut c_char) -> Vec<String> {
+pub fn char_c_array_to_vec_string(array_c: *mut *mut c_char, len: size_t) -> Vec<String> {
     let mut resultat = Vec::new();
 
-    let mut i = 0;
-    loop {
-        let ptr = unsafe { *array_c.offset(i) };
+    for i in 0..len {
+        let ptr = unsafe { *array_c.offset(i as isize) };
         if ptr.is_null() {
             break;
         }
@@ -19,8 +19,6 @@ pub fn char_c_array_to_vec_string(array_c: *mut *mut c_char) -> Vec<String> {
         let rust_str = c_str.to_string_lossy().into_owned();
 
         resultat.push(rust_str);
-
-        i += 1;
     }
 
     resultat
