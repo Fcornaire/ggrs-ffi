@@ -107,7 +107,15 @@ impl Netplay {
         }
 
         if self.is_test {
-            if let Err(e) = session.add_local_input(1, Input::default()) {
+            let res: Result<(), GGRSError>;
+
+            // if self.game_state.frame() % 120 > 60 {
+            //     res = session.add_local_input(1, Input::arrow_pressed());
+            // } else {
+            res = session.add_local_input(1, Input::default()); //we don't care on test mode
+                                                                //}
+
+            if let Err(e) = res {
                 return Err(format!("Couldn't added test input : {}", e));
             }
         }

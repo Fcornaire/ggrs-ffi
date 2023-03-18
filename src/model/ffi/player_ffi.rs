@@ -2,7 +2,7 @@ use core::slice;
 
 use crate::{
     model::{
-        bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player::Player,
+        bool_ffi::BoolFFI, dodge_slide::DodgeSlide, hitbox::Hitbox, player::Player,
         player_arrows_inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
         vector2f::Vector2f,
     },
@@ -31,9 +31,11 @@ pub struct PlayerFFI {
     pub dodge_end_counter: f32,
     pub dodge_stall_counter: f32,
     pub jump_grace_counter: f32,
+    pub dodge_catch_counter: f32,
     pub dodge_slide: DodgeSlideFFI,
     pub dodge_cooldown: BoolFFI,
     pub scheduler: SchedulerFFI,
+    pub hitbox: Hitbox,
     pub auto_move: i32,
     pub aiming: BoolFFI,
     pub can_var_jump: BoolFFI,
@@ -87,6 +89,7 @@ impl PlayerFFI {
             .dodge_end_counter(self.dodge_end_counter)
             .dodge_stall_counter(self.dodge_stall_counter)
             .jump_grace_counter(self.jump_grace_counter)
+            .dodge_catch_counter(self.dodge_catch_counter)
             .dodge_slide(DodgeSlide::new(
                 self.dodge_slide.is_dodge_sliding,
                 self.dodge_slide.was_dodge_sliding,
@@ -98,6 +101,7 @@ impl PlayerFFI {
                 scheduler_counters,
                 scheduler_start_counters,
             ))
+            .hitbox(self.hitbox)
             .auto_move(self.auto_move)
             .aiming(self.aiming)
             .can_var_jump(self.can_var_jump)
@@ -122,6 +126,7 @@ impl PlayerFFI {
         self.dodge_end_counter = player.dodge_end_counter();
         self.dodge_stall_counter = player.dodge_stall_counter();
         self.jump_grace_counter = player.jump_grace_counter();
+        self.dodge_catch_counter = player.dodge_catch_counter();
         self.dodge_slide.is_dodge_sliding = player.dodge_slide().is_dodge_sliding();
         self.dodge_slide.was_dodge_sliding = player.dodge_slide().was_dodge_sliding();
         self.jump_buffer_counter = player.jump_buffer_counter();
@@ -147,6 +152,8 @@ impl PlayerFFI {
         );
         self.scheduler.scheduler_start_counters_length =
             player.scheduler().scheduler_start_counters().len() as i32;
+
+        self.hitbox = player.hitbox();
 
         self.auto_move = player.auto_move();
         self.aiming = player.aiming();

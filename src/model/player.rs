@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, player_arrows_inventory::PlayerArrowsInventory,
-    scheduler::Scheduler, state::State, vector2f::Vector2f,
+    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, hitbox::Hitbox,
+    player_arrows_inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
+    vector2f::Vector2f,
 };
 
 #[repr(C)]
@@ -22,9 +23,11 @@ pub struct Player {
     dodge_end_counter: f32,
     dodge_stall_counter: f32,
     jump_grace_counter: f32,
+    dodge_catch_counter: f32,
     dodge_slide: DodgeSlide,
     dodge_cooldown: BoolFFI,
     scheduler: Scheduler,
+    hitbox: Hitbox,
     auto_move: i32,
     aiming: BoolFFI,
     can_var_jump: BoolFFI,
@@ -94,6 +97,10 @@ impl Player {
         self.jump_grace_counter
     }
 
+    pub fn dodge_catch_counter(&self) -> f32 {
+        self.dodge_catch_counter
+    }
+
     pub fn dodge_slide(&self) -> DodgeSlide {
         self.dodge_slide
     }
@@ -108,6 +115,10 @@ impl Player {
 
     pub fn scheduler(&self) -> Scheduler {
         self.scheduler.clone()
+    }
+
+    pub fn hitbox(&self) -> Hitbox {
+        self.hitbox.clone()
     }
 
     pub fn auto_move(&self) -> i32 {
@@ -212,6 +223,11 @@ impl PlayerBuilder {
         self
     }
 
+    pub fn dodge_catch_counter(mut self, dodge_catch_counter: f32) -> PlayerBuilder {
+        self.player.dodge_catch_counter = dodge_catch_counter;
+        self
+    }
+
     pub fn dodge_slide(mut self, dodge_slide: DodgeSlide) -> PlayerBuilder {
         self.player.dodge_slide = dodge_slide;
         self
@@ -229,6 +245,11 @@ impl PlayerBuilder {
 
     pub fn scheduler(mut self, scheduler: Scheduler) -> PlayerBuilder {
         self.player.scheduler = scheduler;
+        self
+    }
+
+    pub fn hitbox(mut self, hitbox: Hitbox) -> PlayerBuilder {
+        self.player.hitbox = hitbox;
         self
     }
 
