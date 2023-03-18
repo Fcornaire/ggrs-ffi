@@ -175,3 +175,13 @@ pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats)
         Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
     }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_frames_ahead() -> i32 {
+    let mut np = NETPLAY.lock().unwrap();
+
+    match np.frames_ahead() {
+        Ok(frames_ahead) => frames_ahead,
+        Err(_) => -1,
+    }
+}

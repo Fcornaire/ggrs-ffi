@@ -37,6 +37,7 @@ pub trait Session {
     fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError>;
     fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<GGRSConfig>>, GGRSError>;
     fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError>;
+    fn get_frames_ahead(&mut self) -> i32;
     fn retrieve(self: Box<Self>) -> SessionType;
 }
 
@@ -109,6 +110,10 @@ impl Session for P2PSession<GGRSConfig> {
         self.network_stats(remote_player_handle)
     }
 
+    fn get_frames_ahead(&mut self) -> i32 {
+        self.frames_ahead()
+    }
+
     fn retrieve(self: Box<Self>) -> SessionType {
         SessionType::P2P(*self)
     }
@@ -131,6 +136,10 @@ impl Session for SyncTestSession<GGRSConfig> {
 
     fn net_stats(&mut self, _remote_player_handle: usize) -> Result<NetworkStats, GGRSError> {
         Ok(NetworkStats::new())
+    }
+
+    fn get_frames_ahead(&mut self) -> i32 {
+        0
     }
 
     fn retrieve(self: Box<Self>) -> SessionType {

@@ -324,6 +324,16 @@ impl Netplay {
 
         Err(str)
     }
+
+    pub fn frames_ahead(&mut self) -> Result<i32, String> {
+        let mut session = self.session();
+
+        let frames_ahead = session.get_frames_ahead();
+
+        self.session = Some(session.retrieve());
+
+        Ok(frames_ahead)
+    }
 }
 
 unsafe impl Send for Netplay {}
