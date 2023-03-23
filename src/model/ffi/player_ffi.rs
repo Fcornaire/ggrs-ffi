@@ -162,4 +162,8 @@ impl PlayerFFI {
         self.duck_slip_counter = player.duck_slip_counter();
         self.index = player.index();
     }
+
+    pub fn is_empty_player(&self) -> bool {
+        self.index == -1
+    }
 }

@@ -7,6 +7,7 @@ use ggrs::{
     UdpNonBlockingSocket,
 };
 
+use crate::model::ffi::session_ffi::SessionFFI;
 use crate::{
     model::{
         ffi::{config_ffi::ConfigFFI, game_state_ffi::GameStateFFI},
@@ -33,7 +34,7 @@ impl Netplay {
             session,
             is_test: false,
             requests: vec![],
-            game_state: GameState::new(vec![], 0, vec![], 0, 0),
+            game_state: GameState::new(vec![], 0, vec![], 0, SessionFFI::default(), 0),
             skip_frames: 0,
         }
     }
@@ -109,11 +110,11 @@ impl Netplay {
         if self.is_test {
             let res: Result<(), GGRSError>;
 
-            // if self.game_state.frame() % 120 > 60 {
-            //     res = session.add_local_input(1, Input::arrow_pressed());
-            // } else {
-            res = session.add_local_input(1, Input::default()); //we don't care on test mode
-                                                                //}
+            if self.game_state.frame() % 120 > 60 {
+                res = session.add_local_input(1, Input::jump());
+            } else {
+                res = session.add_local_input(1, Input::default()); //we don't care on test mode
+            }
 
             if let Err(e) = res {
                 return Err(format!("Couldn't added test input : {}", e));
@@ -214,16 +215,16 @@ impl Netplay {
                     self.game_state = gs.clone();
 
                     //Mostly for debug purpose, need refacto
-                    // let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
+                    let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
 
-                    // let mut file = fs::OpenOptions::new()
-                    //     .write(true)
-                    //     .append(true)
-                    //     .create(true)
-                    //     .open("gs.json")
-                    //     .expect("Unable to open");
+                    let mut file = fs::OpenOptions::new()
+                        .write(true)
+                        .append(true)
+                        .create(true)
+                        .open("gs.json")
+                        .expect("Unable to open");
 
-                    // file.write_all(gs.as_bytes()).expect("Unable to write data");
+                    file.write_all(gs.as_bytes()).expect("Unable to write data");
 
                     Ok(())
                 }

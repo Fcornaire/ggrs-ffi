@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{arrow::Arrow, player::Player};
+use super::{arrow::Arrow, ffi::session_ffi::SessionFFI, player::Player};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct GameState {
@@ -8,6 +8,7 @@ pub struct GameState {
     players_len: i32,
     arrows: Vec<Arrow>,
     arrows_len: i32,
+    session: SessionFFI,
     frame: i32,
 }
 
@@ -17,6 +18,7 @@ impl GameState {
         players_len: i32,
         arrows: Vec<Arrow>,
         arrows_len: i32,
+        session: SessionFFI,
         frame: i32,
     ) -> Self {
         Self {
@@ -24,6 +26,7 @@ impl GameState {
             players_len,
             arrows,
             arrows_len,
+            session,
             frame,
         }
     }
@@ -46,6 +49,10 @@ impl GameState {
 
     pub fn arrows_len(&self) -> i32 {
         self.arrows_len
+    }
+
+    pub fn session(&self) -> SessionFFI {
+        self.session.clone()
     }
 
     pub fn add_frame(&mut self) {

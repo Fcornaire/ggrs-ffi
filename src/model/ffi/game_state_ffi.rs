@@ -1,8 +1,8 @@
 use core::slice;
 
-use crate::model::{arrow::Arrow, game_state::GameState};
+use crate::model::{arrow::Arrow, game_state::GameState, player::Player};
 
-use super::{arrow_ffi::ArrowFFI, player_ffi::PlayerFFI};
+use super::{arrow_ffi::ArrowFFI, player_ffi::PlayerFFI, session_ffi::SessionFFI};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -11,6 +11,7 @@ pub struct GameStateFFI {
     pub players_len: i32,
     pub arrows: *mut ArrowFFI,
     pub arrows_len: i32,
+    pub session: SessionFFI,
     pub frame: i32,
 }
 
@@ -24,8 +25,9 @@ impl GameStateFFI {
         let arrows_ffi =
             slice::from_raw_parts(self.arrows, self.arrows_len.try_into().unwrap()).to_vec();
 
-        let players = players_ffi
+        let players: Vec<Player> = players_ffi
             .iter()
+            .filter(|player_ffi| !player_ffi.is_empty_player())
             .map(|play_ffi| play_ffi.to_model())
             .collect();
 
@@ -36,10 +38,11 @@ impl GameStateFFI {
             .collect();
 
         GameState::new(
-            players,
-            self.players_len,
+            players.clone(),
+            players.clone().len().try_into().unwrap(),
             arrows.clone(),
             arrows.clone().len().try_into().unwrap(),
+            self.session,
             frame,
         )
     }
@@ -67,6 +70,7 @@ impl GameStateFFI {
 
         self.players_len = gs.players_len();
         self.arrows_len = gs.arrows_len();
+        self.session = gs.session();
         self.frame = gs.frame();
     }
 }

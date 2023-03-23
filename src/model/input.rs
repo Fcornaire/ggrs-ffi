@@ -37,6 +37,23 @@ impl Input {
             aim_axis: Vector2f::default(),
         }
     }
+
+    pub fn jump() -> Self {
+        Self {
+            jump_check: OnOff::IsOn,
+            jump_pressed: OnOff::IsOn,
+            shoot_check: OnOff::IsOff,
+            shoot_pressed: OnOff::IsOff,
+            alt_shoot_check: OnOff::IsOff,
+            alt_shoot_pressed: OnOff::IsOff,
+            dodge_check: OnOff::IsOff,
+            dodge_pressed: OnOff::IsOff,
+            arrow_pressed: OnOff::IsOff,
+            move_x: 0,
+            move_y: 0,
+            aim_axis: Vector2f::default(),
+        }
+    }
 }
 
 #[repr(C)]
