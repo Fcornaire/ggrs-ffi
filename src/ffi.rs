@@ -160,13 +160,6 @@ pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
 }
 
 #[no_mangle]
-pub extern "C" fn netplay_skip_frames() -> u32 {
-    let np = NETPLAY.lock().unwrap();
-
-    np.skip_frames()
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 

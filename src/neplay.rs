@@ -1,13 +1,15 @@
-use std::io::Write;
+use rand::Rng;
+use std::net::SocketAddr;
 use std::time::Duration;
-use std::{fs, net::SocketAddr};
 
 use ggrs::{
     GGRSError, GGRSRequest, InputStatus, PlayerType, SessionBuilder, SyncTestSession,
     UdpNonBlockingSocket,
 };
 
+use crate::model::ffi::player_draw::PlayerDraw;
 use crate::model::ffi::session_ffi::SessionFFI;
+use crate::record::Record;
 use crate::{
     model::{
         ffi::{config_ffi::ConfigFFI, game_state_ffi::GameStateFFI},
@@ -23,9 +25,11 @@ use crate::{
 pub struct Netplay {
     session: Option<SessionType>,
     is_test: bool,
+    player_draw: PlayerDraw,
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
-    skip_frames: u32,
+    record: Record,
+    current_inputs: Option<Vec<Input>>,
 }
 
 impl Netplay {
@@ -33,9 +37,11 @@ impl Netplay {
         Self {
             session,
             is_test: false,
+            player_draw: PlayerDraw::Unkown,
             requests: vec![],
             game_state: GameState::new(vec![], 0, vec![], 0, SessionFFI::default(), 0),
-            skip_frames: 0,
+            record: Record::new(),
+            current_inputs: Some(vec![]),
         }
     }
 
@@ -59,6 +65,7 @@ impl Netplay {
                 let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
                 self.is_test = config.is_test_mode();
+                self.player_draw = config.player_draw();
 
                 if !config.is_test_mode() {
                     let session = SessionBuilder::<GGRSConfig>::new()
@@ -68,7 +75,7 @@ impl Netplay {
                         .add_player(PlayerType::Remote(remote_addr), 1)
                         .unwrap()
                         .with_input_delay(config.input_delay() as usize)
-                        .with_disconnect_timeout(Duration::from_secs(10))
+                        .with_disconnect_timeout(Duration::from_secs(3))
                         .start_p2p_session(socket)
                         .unwrap();
 
@@ -110,8 +117,12 @@ impl Netplay {
         if self.is_test {
             let res: Result<(), GGRSError>;
 
-            if self.game_state.frame() % 120 > 60 {
-                res = session.add_local_input(1, Input::jump());
+            let mut rng = rand::thread_rng();
+
+            let rand = rng.gen_range(0..10);
+
+            if rand % 2 == 0 {
+                res = session.add_local_input(1, Input::dodge());
             } else {
                 res = session.add_local_input(1, Input::default()); //we don't care on test mode
             }
@@ -154,25 +165,9 @@ impl Netplay {
         let mut session = self.session();
         let events: Vec<&'static str> = session.events(self);
 
-        self.minus_skip_frames();
-
         self.session = Some(session.retrieve());
 
         events
-    }
-
-    pub fn skip_frames(&self) -> u32 {
-        self.skip_frames
-    }
-
-    pub fn update_skip_frames(&mut self, skip_frames: u32) {
-        self.skip_frames += skip_frames;
-    }
-
-    pub fn minus_skip_frames(&mut self) {
-        if self.skip_frames > 0 {
-            self.skip_frames -= 1;
-        }
     }
 
     pub fn game_state(&self) -> GameState {
@@ -214,17 +209,17 @@ impl Netplay {
 
                     self.game_state = gs.clone();
 
-                    //Mostly for debug purpose, need refacto
-                    let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
+                    let inputs = match self.current_inputs.take() {
+                        Some(inp) => inp,
+                        None => vec![],
+                    };
 
-                    let mut file = fs::OpenOptions::new()
-                        .write(true)
-                        .append(true)
-                        .create(true)
-                        .open("gs.json")
-                        .expect("Unable to open");
-
-                    file.write_all(gs.as_bytes()).expect("Unable to write data");
+                    self.record.add_frame(
+                        self.game_state.frame(),
+                        inputs,
+                        self.game_state.clone(),
+                        self.player_draw,
+                    );
 
                     Ok(())
                 }
@@ -261,6 +256,8 @@ impl Netplay {
 
                     self.requests.remove(0);
 
+                    self.current_inputs = Some(inputs.clone());
+
                     inputs
                 }
                 _ => vec![],
@@ -278,11 +275,13 @@ impl Netplay {
             let req = self.requests.first().unwrap();
 
             return match req {
-                GGRSRequest::LoadGameState { cell, frame: _ } => {
+                GGRSRequest::LoadGameState { cell, frame } => {
                     let to_load: GameState = cell
                         .load()
                         .expect("No data found when trying to load game state");
                     self.game_state = to_load.clone();
+
+                    self.record.remove_predicted_frames(*frame);
 
                     self.requests.remove(0);
 
@@ -334,6 +333,10 @@ impl Netplay {
         self.session = Some(session.retrieve());
 
         Ok(frames_ahead)
+    }
+
+    pub fn export(&self) {
+        self.record.export();
     }
 }
 

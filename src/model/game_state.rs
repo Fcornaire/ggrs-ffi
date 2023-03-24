@@ -58,4 +58,15 @@ impl GameState {
     pub fn add_frame(&mut self) {
         self.frame += 1;
     }
+
+    pub fn swap_players(&mut self) {
+        self.players.swap(0, 1);
+
+        self.players[0].update_index(0);
+        self.players[1].update_index(1);
+    }
+
+    pub fn update_remaining_player_index(&mut self) {
+        self.players[0].update_index(0);
+    }
 }

@@ -61,7 +61,10 @@ impl Session for P2PSession<GGRSConfig> {
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
-                GGRSEvent::Disconnected { addr: _ } => events.push("Disconnected"),
+                GGRSEvent::Disconnected { addr: _ } => {
+                    netplay.export();
+                    events.push("Disconnected")
+                }
 
                 GGRSEvent::NetworkInterrupted {
                     addr,
@@ -76,8 +79,6 @@ impl Session for P2PSession<GGRSConfig> {
                 }
 
                 GGRSEvent::WaitRecommendation { skip_frames } => {
-                    netplay.update_skip_frames(skip_frames + 1);
-
                     let str = format!("WaitRecommendation skip frames {}", skip_frames);
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)

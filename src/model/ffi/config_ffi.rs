@@ -3,6 +3,8 @@ use std::os::raw::{c_char, c_uchar};
 
 use crate::model::{config::Config, on_off::OnOff};
 
+use super::player_draw::PlayerDraw;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ConfigFFI {
@@ -10,6 +12,7 @@ pub struct ConfigFFI {
     input_delay: i32,
     is_test_mode: OnOff,
     test_check_distance: i32,
+    player_draw: PlayerDraw,
 }
 
 impl ConfigFFI {
@@ -31,6 +34,7 @@ impl ConfigFFI {
             self.input_delay,
             self.is_test_mode.is_on(),
             self.test_check_distance,
+            self.player_draw,
         )
     }
 }

@@ -144,6 +144,10 @@ impl Player {
     pub fn index(&self) -> i32 {
         self.index
     }
+
+    pub fn update_index(&mut self, index: i32) {
+        self.index = index;
+    }
 }
 
 #[derive(Default)]

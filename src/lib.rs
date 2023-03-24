@@ -7,6 +7,7 @@ use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char, sync::Mut
 pub mod ffi;
 pub mod model;
 pub mod neplay;
+pub mod record;
 pub mod session;
 pub mod utils;
 
