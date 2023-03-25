@@ -1,4 +1,6 @@
 use rand::Rng;
+use std::fs;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -117,12 +119,13 @@ impl Netplay {
         if self.is_test {
             let res: Result<(), GGRSError>;
 
-            let mut rng = rand::thread_rng();
+            // let mut rng = rand::thread_rng();
 
-            let rand = rng.gen_range(0..10);
+            // let rand = rng.gen_range(0..10);
 
-            if rand % 2 == 0 {
-                res = session.add_local_input(1, Input::dodge());
+            // if rand % 2 == 0 {
+            if self.game_state.frame() % 120 > 60 {
+                res = session.add_local_input(1, Input::arrow_pressed());
             } else {
                 res = session.add_local_input(1, Input::default()); //we don't care on test mode
             }
@@ -220,6 +223,18 @@ impl Netplay {
                         self.game_state.clone(),
                         self.player_draw,
                     );
+
+                    //Mostly for debug purpose, need refacto
+                    // let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
+
+                    // let mut file = fs::OpenOptions::new()
+                    //     .write(true)
+                    //     .append(true)
+                    //     .create(true)
+                    //     .open("gs.json")
+                    //     .expect("Unable to open");
+
+                    // file.write_all(gs.as_bytes()).expect("Unable to write data");
 
                     Ok(())
                 }

@@ -7,8 +7,8 @@ use crate::{
         vector2f::Vector2f,
     },
     utils::{
-        char_c_array_to_vec_string, copy_vec_float_to_float_array_c, copy_vec_int_to_int_array_c,
-        copy_vec_string_to_char_c_array,
+        byte_array_to_guid, char_c_array_to_vec_string, copy_vec_float_to_float_array_c,
+        copy_vec_int_to_int_array_c, copy_vec_string_to_char_c_array, string_guid_to_byte_array,
     },
 };
 
@@ -17,6 +17,7 @@ use super::{dodge_slide::DodgeSlideFFI, scheduler_ffi::SchedulerFFI, state_ffi::
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct PlayerFFI {
+    pub is_collidable: BoolFFI,
     pub is_dead: BoolFFI,
     pub position: Vector2f,
     pub position_counter: Vector2f,
@@ -32,6 +33,7 @@ pub struct PlayerFFI {
     pub dodge_stall_counter: f32,
     pub jump_grace_counter: f32,
     pub dodge_catch_counter: f32,
+    pub dying_counter: f32,
     pub dodge_slide: DodgeSlideFFI,
     pub dodge_cooldown: BoolFFI,
     pub scheduler: SchedulerFFI,
@@ -41,6 +43,7 @@ pub struct PlayerFFI {
     pub can_var_jump: BoolFFI,
     pub on_ground: BoolFFI,
     pub duck_slip_counter: f32,
+    pub death_arrow_id: *mut u8,
     pub index: i32,
 }
 
@@ -72,7 +75,10 @@ impl PlayerFFI {
             Vec::from(slice)
         };
 
+        let death_arrow_guid = byte_array_to_guid(self.death_arrow_id);
+
         Player::builder()
+            .is_collidable(self.is_collidable)
             .is_dead(self.is_dead)
             .position(self.position)
             .position_counter(self.position_counter)
@@ -89,6 +95,7 @@ impl PlayerFFI {
             .dodge_end_counter(self.dodge_end_counter)
             .dodge_stall_counter(self.dodge_stall_counter)
             .jump_grace_counter(self.jump_grace_counter)
+            .dying_counter(self.dying_counter)
             .dodge_catch_counter(self.dodge_catch_counter)
             .dodge_slide(DodgeSlide::new(
                 self.dodge_slide.is_dodge_sliding,
@@ -107,11 +114,13 @@ impl PlayerFFI {
             .can_var_jump(self.can_var_jump)
             .on_ground(self.on_ground)
             .duck_slip_counter(self.duck_slip_counter)
+            .death_arrow_id(death_arrow_guid.to_string())
             .index(self.index)
             .build()
     }
 
-    pub fn update(&mut self, player: Player) {
+    pub unsafe fn update(&mut self, player: Player) {
+        self.is_collidable = player.is_collidable();
         self.is_dead = player.is_dead();
         self.position = player.position();
         self.position_counter = player.position_counter();
@@ -130,6 +139,7 @@ impl PlayerFFI {
         self.dodge_slide.is_dodge_sliding = player.dodge_slide().is_dodge_sliding();
         self.dodge_slide.was_dodge_sliding = player.dodge_slide().was_dodge_sliding();
         self.jump_buffer_counter = player.jump_buffer_counter();
+        self.dying_counter = player.dying_counter();
         self.dodge_cooldown = player.dodge_cooldown();
 
         copy_vec_string_to_char_c_array(
@@ -161,6 +171,9 @@ impl PlayerFFI {
         self.on_ground = player.on_ground();
         self.duck_slip_counter = player.duck_slip_counter();
         self.index = player.index();
+
+        let bytes = string_guid_to_byte_array(player.death_arrow_id());
+        slice::from_raw_parts_mut(self.death_arrow_id, 16).copy_from_slice(&bytes);
     }
 
     pub fn is_empty_player(&self) -> bool {

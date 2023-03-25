@@ -9,6 +9,7 @@ use super::{
 #[repr(C)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Player {
+    is_collidable: BoolFFI,
     is_dead: BoolFFI,
     position: Vector2f,
     position_counter: Vector2f,
@@ -24,6 +25,7 @@ pub struct Player {
     dodge_stall_counter: f32,
     jump_grace_counter: f32,
     dodge_catch_counter: f32,
+    dying_counter: f32,
     dodge_slide: DodgeSlide,
     dodge_cooldown: BoolFFI,
     scheduler: Scheduler,
@@ -33,12 +35,17 @@ pub struct Player {
     can_var_jump: BoolFFI,
     on_ground: BoolFFI,
     duck_slip_counter: f32,
+    death_arrow_id: String,
     index: i32,
 }
 
 impl Player {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn is_collidable(&self) -> BoolFFI {
+        self.is_collidable
     }
 
     pub fn is_dead(&self) -> BoolFFI {
@@ -101,6 +108,10 @@ impl Player {
         self.dodge_catch_counter
     }
 
+    pub fn dying_counter(&self) -> f32 {
+        self.dying_counter
+    }
+
     pub fn dodge_slide(&self) -> DodgeSlide {
         self.dodge_slide
     }
@@ -141,6 +152,10 @@ impl Player {
         self.duck_slip_counter
     }
 
+    pub fn death_arrow_id(&self) -> String {
+        self.death_arrow_id.clone()
+    }
+
     pub fn index(&self) -> i32 {
         self.index
     }
@@ -160,6 +175,11 @@ impl PlayerBuilder {
         PlayerBuilder {
             player: Player::new(),
         }
+    }
+
+    pub fn is_collidable(mut self, is_collidable: BoolFFI) -> PlayerBuilder {
+        self.player.is_collidable = is_collidable;
+        self
     }
 
     pub fn is_dead(mut self, is_dead: BoolFFI) -> PlayerBuilder {
@@ -232,6 +252,11 @@ impl PlayerBuilder {
         self
     }
 
+    pub fn dying_counter(mut self, dying_counter: f32) -> PlayerBuilder {
+        self.player.dying_counter = dying_counter;
+        self
+    }
+
     pub fn dodge_slide(mut self, dodge_slide: DodgeSlide) -> PlayerBuilder {
         self.player.dodge_slide = dodge_slide;
         self
@@ -279,6 +304,11 @@ impl PlayerBuilder {
 
     pub fn duck_slip_counter(mut self, duck_slip_counter: f32) -> PlayerBuilder {
         self.player.duck_slip_counter = duck_slip_counter;
+        self
+    }
+
+    pub fn death_arrow_id(mut self, death_arrow_id: String) -> PlayerBuilder {
+        self.player.death_arrow_id = death_arrow_id;
         self
     }
 

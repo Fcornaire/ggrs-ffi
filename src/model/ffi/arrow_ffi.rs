@@ -1,7 +1,10 @@
 use core::slice;
 
 use crate::{
-    model::{arrow::Arrow, arrow_states::ArrowStates, arrow_types::ArrowTypes, vector2f::Vector2f},
+    model::{
+        arrow::Arrow, arrow_states::ArrowStates, arrow_types::ArrowTypes, bool_ffi::BoolFFI,
+        vector2f::Vector2f,
+    },
     utils::{byte_array_to_guid, string_guid_to_byte_array},
 };
 
@@ -20,6 +23,9 @@ pub struct ArrowFFI {
     pub stuck_direction: Vector2f,
     pub player_index: i32,
     pub id: *mut u8,
+    pub is_collidable: BoolFFI,
+    pub is_active: BoolFFI,
+    pub is_frozen: BoolFFI,
 }
 
 impl ArrowFFI {
@@ -39,6 +45,9 @@ impl ArrowFFI {
             .stuck_direction(self.stuck_direction)
             .player_index(self.player_index)
             .id(guid.to_string())
+            .is_active(self.is_active)
+            .is_collidable(self.is_collidable)
+            .is_frozen(self.is_frozen)
             .build()
     }
 
@@ -54,6 +63,9 @@ impl ArrowFFI {
         self.arrow_type = arrow.arrow_type();
         self.stuck_direction = arrow.stuck_direction();
         self.player_index = arrow.player_index();
+        self.is_active = arrow.is_active();
+        self.is_collidable = arrow.is_collidable();
+        self.is_frozen = arrow.is_frozen();
 
         let bytes = string_guid_to_byte_array(arrow.id());
         slice::from_raw_parts_mut(self.id, 16).copy_from_slice(&bytes);

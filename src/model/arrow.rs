@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{arrow_states::ArrowStates, arrow_types::ArrowTypes, vector2f::Vector2f};
+use super::{
+    arrow_states::ArrowStates, arrow_types::ArrowTypes, bool_ffi::BoolFFI, vector2f::Vector2f,
+};
 
 #[repr(C)]
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
@@ -17,6 +19,9 @@ pub struct Arrow {
     stuck_direction: Vector2f,
     player_index: i32,
     id: String,
+    is_collidable: BoolFFI,
+    is_active: BoolFFI,
+    is_frozen: BoolFFI,
 }
 
 impl Arrow {
@@ -74,6 +79,18 @@ impl Arrow {
 
     pub fn id(&self) -> String {
         self.id.clone()
+    }
+
+    pub fn is_collidable(&self) -> BoolFFI {
+        self.is_collidable
+    }
+
+    pub fn is_active(&self) -> BoolFFI {
+        self.is_active
+    }
+
+    pub fn is_frozen(&self) -> BoolFFI {
+        self.is_frozen
     }
 }
 
@@ -146,6 +163,21 @@ impl ArrowBuilder {
 
     pub fn id(mut self, id: String) -> ArrowBuilder {
         self.arrow.id = id;
+        self
+    }
+
+    pub fn is_collidable(mut self, is_collidable: BoolFFI) -> ArrowBuilder {
+        self.arrow.is_collidable = is_collidable;
+        self
+    }
+
+    pub fn is_active(mut self, is_active: BoolFFI) -> ArrowBuilder {
+        self.arrow.is_active = is_active;
+        self
+    }
+
+    pub fn is_frozen(mut self, is_frozen: BoolFFI) -> ArrowBuilder {
+        self.arrow.is_frozen = is_frozen;
         self
     }
 
