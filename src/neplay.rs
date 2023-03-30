@@ -125,7 +125,7 @@ impl Netplay {
 
             // if rand % 2 == 0 {
             if self.game_state.frame() % 120 > 60 {
-                res = session.add_local_input(1, Input::arrow_pressed());
+                res = session.add_local_input(1, Input::default());
             } else {
                 res = session.add_local_input(1, Input::default()); //we don't care on test mode
             }
