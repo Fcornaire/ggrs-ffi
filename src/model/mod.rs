@@ -7,6 +7,7 @@ pub mod chest_state;
 pub mod config;
 pub mod dodge_slide;
 pub mod ffi;
+pub mod flash;
 pub mod game_state;
 pub mod hitbox;
 pub mod input;

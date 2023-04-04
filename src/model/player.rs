@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, hitbox::Hitbox,
+    bool_ffi::BoolFFI, dodge_slide::DodgeSlide, flash::Flash, hitbox::Hitbox,
     player_arrows_inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
     vector2f::Vector2f,
 };
@@ -35,6 +35,8 @@ pub struct Player {
     can_var_jump: BoolFFI,
     on_ground: BoolFFI,
     duck_slip_counter: f32,
+    is_shield_visible: BoolFFI,
+    flash: Flash,
     death_arrow_id: String,
     index: i32,
 }
@@ -46,6 +48,10 @@ impl Player {
 
     pub fn is_collidable(&self) -> BoolFFI {
         self.is_collidable
+    }
+
+    pub fn is_shield_visible(&self) -> BoolFFI {
+        self.is_shield_visible
     }
 
     pub fn is_dead(&self) -> BoolFFI {
@@ -156,6 +162,10 @@ impl Player {
         self.death_arrow_id.clone()
     }
 
+    pub fn flash(&self) -> Flash {
+        self.flash
+    }
+
     pub fn index(&self) -> i32 {
         self.index
     }
@@ -179,6 +189,11 @@ impl PlayerBuilder {
 
     pub fn is_collidable(mut self, is_collidable: BoolFFI) -> PlayerBuilder {
         self.player.is_collidable = is_collidable;
+        self
+    }
+
+    pub fn is_shield_visible(mut self, is_shield_visible: BoolFFI) -> PlayerBuilder {
+        self.player.is_shield_visible = is_shield_visible;
         self
     }
 
@@ -304,6 +319,11 @@ impl PlayerBuilder {
 
     pub fn duck_slip_counter(mut self, duck_slip_counter: f32) -> PlayerBuilder {
         self.player.duck_slip_counter = duck_slip_counter;
+        self
+    }
+
+    pub fn flash(mut self, flash: Flash) -> PlayerBuilder {
+        self.player.flash = flash;
         self
     }
 

@@ -2,7 +2,7 @@ use core::slice;
 
 use crate::{
     model::{
-        bool_ffi::BoolFFI, dodge_slide::DodgeSlide, hitbox::Hitbox, player::Player,
+        bool_ffi::BoolFFI, dodge_slide::DodgeSlide, flash::Flash, hitbox::Hitbox, player::Player,
         player_arrows_inventory::PlayerArrowsInventory, scheduler::Scheduler, state::State,
         vector2f::Vector2f,
     },
@@ -43,6 +43,8 @@ pub struct PlayerFFI {
     pub can_var_jump: BoolFFI,
     pub on_ground: BoolFFI,
     pub duck_slip_counter: f32,
+    pub is_shield_visible: BoolFFI,
+    pub flash: Flash,
     pub death_arrow_id: *mut u8,
     pub index: i32,
 }
@@ -114,6 +116,8 @@ impl PlayerFFI {
             .can_var_jump(self.can_var_jump)
             .on_ground(self.on_ground)
             .duck_slip_counter(self.duck_slip_counter)
+            .is_shield_visible(self.is_shield_visible)
+            .flash(self.flash)
             .death_arrow_id(death_arrow_guid.to_string())
             .index(self.index)
             .build()
@@ -170,6 +174,8 @@ impl PlayerFFI {
         self.can_var_jump = player.can_var_jump();
         self.on_ground = player.on_ground();
         self.duck_slip_counter = player.duck_slip_counter();
+        self.is_shield_visible = player.is_shield_visible();
+        self.flash = player.flash();
         self.index = player.index();
 
         let bytes = string_guid_to_byte_array(player.death_arrow_id());
