@@ -3,7 +3,7 @@ use std::{fs, io::Write};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::model::{ffi::player_draw::PlayerDraw, game_state::GameState, input::Input};
+use crate::model::{game_state::GameState, input::Input, player_draw::PlayerDraw};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Frame {
@@ -47,17 +47,17 @@ impl Record {
         let mut game_state_swap = game_state.clone();
 
         //Swap players index for P2 to match p1 export
-        if player_draw == PlayerDraw::Player2 {
-            if game_state_swap.players().len() >= 2 {
-                game_state_swap.swap_players();
-            } else {
-                game_state_swap.update_remaining_player_index();
-            }
+        // if player_draw == PlayerDraw::Player2 {
+        //     if game_state_swap.players().len() >= 2 {
+        //         game_state_swap.swap_players();
+        //     } else {
+        //         game_state_swap.update_remaining_player_index();
+        //     }
 
-            if inputs_swap.len() == 2 {
-                inputs_swap.swap(0, 1);
-            }
-        }
+        //     if inputs_swap.len() == 2 {
+        //         inputs_swap.swap(0, 1);
+        //     }
+        // }
 
         let frame: Frame = Frame::new(frame, inputs_swap, game_state_swap);
 

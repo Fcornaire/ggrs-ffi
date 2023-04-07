@@ -1,4 +1,4 @@
-use super::ffi::player_draw::PlayerDraw;
+use super::player_draw::PlayerDraw;
 
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
 pub struct Config {

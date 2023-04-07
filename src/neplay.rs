@@ -1,6 +1,8 @@
+use flate2::read::GzDecoder;
 use rand::Rng;
+use serde_json::Value;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -9,16 +11,12 @@ use ggrs::{
     UdpNonBlockingSocket,
 };
 
-use crate::model::ffi::player_draw::PlayerDraw;
-use crate::model::ffi::session_ffi::SessionFFI;
+use crate::model::player_draw::PlayerDraw;
 use crate::record::Record;
 use crate::{
     model::{
-        ffi::{config_ffi::ConfigFFI, game_state_ffi::GameStateFFI},
-        game_state::GameState,
-        input::Input,
-        netplay_request::NetplayRequest,
-        network_stats::NetworkStats,
+        ffi::config_ffi::ConfigFFI, game_state::GameState, input::Input,
+        netplay_request::NetplayRequest, network_stats::NetworkStats,
     },
     session::{Session, SessionType},
     GGRSConfig,
@@ -41,18 +39,7 @@ impl Netplay {
             is_test: false,
             player_draw: PlayerDraw::Unkown,
             requests: vec![],
-            game_state: GameState::new(
-                vec![],
-                0,
-                vec![],
-                0,
-                vec![],
-                0,
-                vec![],
-                0,
-                SessionFFI::default(),
-                0,
-            ),
+            game_state: GameState::empty(),
             record: Record::new(),
             current_inputs: Some(vec![]),
         }
@@ -163,6 +150,8 @@ impl Netplay {
                 Err(e) => {
                     self.session = Some(session.retrieve());
 
+                    self.export();
+
                     return Err(format!("GGRSError : {}", e.to_string()));
                 }
             };
@@ -188,6 +177,10 @@ impl Netplay {
         self.game_state.clone()
     }
 
+    pub unsafe fn reset_game_state(&mut self) {
+        self.game_state.release();
+    }
+
     pub fn requests(&self) -> Vec<NetplayRequest> {
         self.requests
             .iter()
@@ -201,12 +194,8 @@ impl Netplay {
 
     pub unsafe fn handle_save_game_state_request(
         &mut self,
-        game_state_ffi: *mut GameStateFFI,
+        game_state: GameState,
     ) -> Result<(), String> {
-        let gs = (*game_state_ffi).clone().to_model(self.game_state.frame());
-
-        (*game_state_ffi).frame = self.game_state.frame(); //Useful for test at least
-
         if !self.requests.is_empty() {
             let req = self.requests.first().unwrap();
 
@@ -214,14 +203,14 @@ impl Netplay {
                 GGRSRequest::SaveGameState { cell, frame } => {
                     assert_eq!(self.game_state.frame(), *frame);
 
-                    let buffer = bincode::serialize(&gs).unwrap();
+                    let buffer = bincode::serialize(&game_state.data()).unwrap();
                     let checksum = fletcher16(&buffer) as u128;
-                    let clone = gs.clone();
-                    cell.save(*frame, Some(clone), Some(checksum));
+                    cell.save(*frame, Some(game_state.clone()), Some(checksum));
+
+                    self.game_state = game_state.clone();
+                    self.game_state.update_frame(*frame);
 
                     self.requests.remove(0);
-
-                    self.game_state = gs.clone();
 
                     let inputs = match self.current_inputs.take() {
                         Some(inp) => inp,
@@ -235,17 +224,9 @@ impl Netplay {
                         self.player_draw,
                     );
 
-                    //Mostly for debug purpose, need refacto
-                    // let gs = serde_json::to_string_pretty(&self.game_state()).unwrap();
-
-                    // let mut file = fs::OpenOptions::new()
-                    //     .write(true)
-                    //     .append(true)
-                    //     .create(true)
-                    //     .open("gs.json")
-                    //     .expect("Unable to open");
-
-                    // file.write_all(gs.as_bytes()).expect("Unable to write data");
+                    if self.is_test {
+                        self.debug();
+                    }
 
                     Ok(())
                 }
@@ -259,6 +240,26 @@ impl Netplay {
         }
 
         Err("Requests are empty".to_string())
+    }
+
+    fn debug(&self) {
+        let data = self.game_state.clone().data().bytes();
+        let mut gz = GzDecoder::new(&*data);
+        let mut s = String::new();
+        gz.read_to_string(&mut s).unwrap();
+
+        //Mostly for debug purpose, need refacto
+        let v: Value = serde_json::from_str(&s).unwrap();
+        let gs = serde_json::to_string_pretty(&v).unwrap();
+
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open("gs.json")
+            .expect("Unable to open");
+
+        file.write_all(gs.as_bytes()).expect("Unable to write data");
     }
 
     pub fn handle_advance_frame_request(&mut self) -> Vec<Input> {
@@ -293,10 +294,7 @@ impl Netplay {
         vec![]
     }
 
-    pub unsafe fn handle_load_game_state_request(
-        &mut self,
-        game_state_ffi: *mut GameStateFFI,
-    ) -> Result<(), String> {
+    pub unsafe fn handle_load_game_state_request(&mut self) -> Result<GameState, String> {
         if !self.requests.is_empty() {
             let req = self.requests.first().unwrap();
 
@@ -305,15 +303,15 @@ impl Netplay {
                     let to_load: GameState = cell
                         .load()
                         .expect("No data found when trying to load game state");
-                    self.game_state = to_load.clone();
+                    self.game_state = to_load;
+
+                    self.game_state.update_frame(*frame);
 
                     self.record.remove_predicted_frames(*frame);
 
                     self.requests.remove(0);
 
-                    (*game_state_ffi).update(to_load.clone());
-
-                    Ok(())
+                    Ok(self.game_state.clone())
                 }
                 _ => {
                     let err = format!(

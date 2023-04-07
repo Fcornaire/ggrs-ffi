@@ -1,11 +1,13 @@
 use std::{mem::forget, os::raw::c_char};
 
 use crate::{
+    core::{
+        action_result::ActionResult,
+        unmanaged::{safe_bytes::SafeBytes, unmanaged_bytes::UnmanagedBytes},
+    },
     model::{
-        ffi::{
-            config_ffi::ConfigFFI, game_state_ffi::GameStateFFI, input_ffi::Inputs,
-            netplay_request_ffi::NetplayRequests,
-        },
+        ffi::{config_ffi::ConfigFFI, input_ffi::Inputs, netplay_request_ffi::NetplayRequests},
+        game_state::GameState,
         input::Input,
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
@@ -99,20 +101,30 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
 
 //TODO: catch_unwind on other method for more safety/sending err msg
 #[no_mangle]
-pub unsafe extern "C" fn netplay_save_game_state(game_state_ffi: *mut GameStateFFI) -> Status {
+pub unsafe extern "C" fn netplay_save_game_state(game_state: SafeBytes) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    let result =
-        std::panic::catch_unwind(
-            move || match np.handle_save_game_state_request(game_state_ffi) {
-                Ok(_) => Status::ok(),
-                Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-            },
-        );
+    let safe_game_state = GameState::new(game_state);
+
+    let result = std::panic::catch_unwind(move || {
+        match np.handle_save_game_state_request(safe_game_state) {
+            Ok(_) => Status::ok(),
+            Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+        }
+    });
 
     match result {
         Ok(status) => status,
-        Err(e) => Status::ko(e.downcast_ref::<&str>().unwrap()),
+        Err(e) => {
+            let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown error".to_string()
+            };
+            Status::ko(Box::leak(error_msg.into_boxed_str()))
+        }
     }
 }
 
@@ -128,24 +140,24 @@ pub extern "C" fn netplay_advance_game_state() -> Inputs {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_load_game_state(game_state: *mut GameStateFFI) -> Status {
+pub unsafe extern "C" fn netplay_load_game_state() -> ActionResult {
     let mut np = NETPLAY.lock().unwrap();
 
-    let result =
-        std::panic::catch_unwind(
-            move || match np.handle_load_game_state_request(game_state) {
-                Ok(_) => Status::ok(),
-                Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-            },
-        );
+    let result = std::panic::catch_unwind(move || match np.handle_load_game_state_request() {
+        Ok(gs) => ActionResult::ok(gs.data().to_safe_bytes()),
+        Err(e) => ActionResult::ko(e, UnmanagedBytes::empty().to_safe_bytes()),
+    });
 
     match result {
-        Ok(status) => status,
+        Ok(action_result) => action_result,
         Err(e) => {
             if let Some(er) = e.downcast_ref::<&str>() {
-                return Status::ko(er);
+                return ActionResult::ko(er.to_string(), UnmanagedBytes::empty().to_safe_bytes());
             } else {
-                return Status::ko("Unkown error");
+                return ActionResult::ko(
+                    "Unkown error".to_string(),
+                    UnmanagedBytes::empty().to_safe_bytes(),
+                );
             }
         }
     }
@@ -177,4 +189,14 @@ pub unsafe extern "C" fn netplay_frames_ahead() -> i32 {
         Ok(frames_ahead) => frames_ahead,
         Err(_) => -1,
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_free_game_state(safe_bytes: SafeBytes) {
+    let mut np = NETPLAY.lock().unwrap();
+
+    let slice = safe_bytes.slice();
+    drop(slice);
+
+    np.reset_game_state();
 }

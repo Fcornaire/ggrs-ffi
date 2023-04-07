@@ -1,9 +1,7 @@
 use core::slice;
 use std::os::raw::{c_char, c_uchar};
 
-use crate::model::{config::Config, on_off::OnOff};
-
-use super::player_draw::PlayerDraw;
+use crate::model::{config::Config, on_off::OnOff, player_draw::PlayerDraw};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
