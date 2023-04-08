@@ -1,5 +1,7 @@
 use std::{mem::forget, os::raw::c_char};
 
+use macros::{catch_action_result, catch_status};
+
 use crate::{
     core::{
         action_result::ActionResult,
@@ -17,23 +19,19 @@ use crate::{
 use std::ffi::CString;
 
 #[no_mangle]
+#[catch_status]
 pub unsafe extern "C" fn netplay_init(config_ffi: *mut ConfigFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.init(config_ffi) {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    }
+    np.init(config_ffi)
 }
 
 #[no_mangle]
+#[catch_status]
 pub extern "C" fn netplay_poll() -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.poll_remote() {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    }
+    np.poll_remote()
 }
 
 #[no_mangle]
@@ -99,33 +97,14 @@ pub extern "C" fn netplay_requests_free(requests: NetplayRequests) {
     };
 }
 
-//TODO: catch_unwind on other method for more safety/sending err msg
 #[no_mangle]
+#[catch_status]
 pub unsafe extern "C" fn netplay_save_game_state(game_state: SafeBytes) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
     let safe_game_state = GameState::new(game_state);
 
-    let result = std::panic::catch_unwind(move || {
-        match np.handle_save_game_state_request(safe_game_state) {
-            Ok(_) => Status::ok(),
-            Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-        }
-    });
-
-    match result {
-        Ok(status) => status,
-        Err(e) => {
-            let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown error".to_string()
-            };
-            Status::ko(Box::leak(error_msg.into_boxed_str()))
-        }
-    }
+    np.handle_save_game_state_request(safe_game_state)
 }
 
 #[no_mangle]
@@ -140,27 +119,10 @@ pub extern "C" fn netplay_advance_game_state() -> Inputs {
 }
 
 #[no_mangle]
+#[catch_action_result]
 pub unsafe extern "C" fn netplay_load_game_state() -> ActionResult {
     let mut np = NETPLAY.lock().unwrap();
-
-    let result = std::panic::catch_unwind(move || match np.handle_load_game_state_request() {
-        Ok(gs) => ActionResult::ok(gs.data().to_safe_bytes()),
-        Err(e) => ActionResult::ko(e, UnmanagedBytes::empty().to_safe_bytes()),
-    });
-
-    match result {
-        Ok(action_result) => action_result,
-        Err(e) => {
-            if let Some(er) = e.downcast_ref::<&str>() {
-                return ActionResult::ko(er.to_string(), UnmanagedBytes::empty().to_safe_bytes());
-            } else {
-                return ActionResult::ko(
-                    "Unkown error".to_string(),
-                    UnmanagedBytes::empty().to_safe_bytes(),
-                );
-            }
-        }
-    }
+    np.handle_load_game_state_request()
 }
 
 #[no_mangle]
@@ -172,13 +134,11 @@ pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
 }
 
 #[no_mangle]
+#[catch_status]
 pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.network_stats(network_stats) {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    }
+    np.network_stats(network_stats)
 }
 
 #[no_mangle]
