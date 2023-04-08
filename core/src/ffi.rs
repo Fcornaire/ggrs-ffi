@@ -19,19 +19,23 @@ use crate::{
 use std::ffi::CString;
 
 #[no_mangle]
-#[catch_status]
 pub unsafe extern "C" fn netplay_init(config_ffi: *mut ConfigFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    np.init(config_ffi)
+    match np.init(config_ffi) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+    }
 }
 
 #[no_mangle]
-#[catch_status]
 pub extern "C" fn netplay_poll() -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    np.poll_remote()
+    match np.poll_remote() {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+    }
 }
 
 #[no_mangle]
@@ -134,11 +138,13 @@ pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
 }
 
 #[no_mangle]
-#[catch_status]
 pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    np.network_stats(network_stats)
+    match np.network_stats(network_stats) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+    }
 }
 
 #[no_mangle]
