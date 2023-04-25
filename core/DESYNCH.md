@@ -1,5 +1,11 @@
 Thing that cause desynch
 
-- Shooting arrows while facing a wall (you have to be close to the wall and the arrows)
+- On at lest 3 check distance, arrow on shield desynch ? (might not be true)
 
-- Auto move when doing wall jump
+- BIG chest (removed from now)
+
+- Spawning chest at round start (Fixed ?)
+
+- killing not registering (aka opne player alive and the game still goes on) (Fixed ??)
+
+- Oppening chest with nothing ?? (fixed ?)

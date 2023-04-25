@@ -61,7 +61,7 @@ impl Netplay {
         match config.remote_addr().parse::<SocketAddr>() {
             Ok(socket) => {
                 let remote_addr: SocketAddr = socket;
-                let local_port = 7000;
+                let local_port = config.port();
                 let socket = UdpNonBlockingSocket::bind_to_port(local_port).unwrap();
 
                 self.is_test = config.is_test_mode();
@@ -75,7 +75,7 @@ impl Netplay {
                         .add_player(PlayerType::Remote(remote_addr), 1)
                         .unwrap()
                         .with_input_delay(config.input_delay() as usize)
-                        .with_disconnect_timeout(Duration::from_secs(3))
+                        .with_disconnect_timeout(Duration::from_secs(15))
                         .start_p2p_session(socket)
                         .unwrap();
 

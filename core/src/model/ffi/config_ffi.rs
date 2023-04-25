@@ -7,6 +7,7 @@ use crate::model::{config::Config, on_off::OnOff, player_draw::PlayerDraw};
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ConfigFFI {
     remote_addr: *mut c_char,
+    port: u16,
     input_delay: i32,
     is_test_mode: OnOff,
     test_check_distance: i32,
@@ -29,6 +30,7 @@ impl ConfigFFI {
 
         Config::new(
             remote_addr,
+            self.port,
             self.input_delay,
             self.is_test_mode.is_on(),
             self.test_check_distance,

@@ -19,23 +19,19 @@ use crate::{
 use std::ffi::CString;
 
 #[no_mangle]
+#[catch_status]
 pub unsafe extern "C" fn netplay_init(config_ffi: *mut ConfigFFI) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.init(config_ffi) {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    }
+    np.init(config_ffi)
 }
 
 #[no_mangle]
+#[catch_status]
 pub extern "C" fn netplay_poll() -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.poll_remote() {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    }
+    np.poll_remote()
 }
 
 #[no_mangle]
@@ -69,9 +65,23 @@ pub extern "C" fn netplay_events_free(events: Events) {
 pub extern "C" fn netplay_advance_frame(input: Input) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    match np.advance_frame(input) {
+    let res = std::panic::catch_unwind(move || match np.advance_frame(input) {
         Ok(_) => Status::ok(),
         Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+    });
+
+    match res {
+        Ok(status) => status,
+        Err(e) => {
+            let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown error".to_string()
+            };
+            Status::ko(Box::leak(error_msg.into_boxed_str()))
+        }
     }
 }
 

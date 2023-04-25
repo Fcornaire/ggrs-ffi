@@ -3,6 +3,7 @@ use super::player_draw::PlayerDraw;
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
 pub struct Config {
     remote_addr: String,
+    port: u16,
     input_delay: i32,
     is_test_mode: bool,
     test_check_distance: i32,
@@ -12,6 +13,7 @@ pub struct Config {
 impl Config {
     pub fn new(
         remote_addr: String,
+        port: u16,
         input_delay: i32,
         is_test_mode: bool,
         test_check_distance: i32,
@@ -19,6 +21,7 @@ impl Config {
     ) -> Self {
         Config {
             remote_addr,
+            port,
             input_delay,
             is_test_mode,
             test_check_distance,
@@ -28,6 +31,10 @@ impl Config {
 
     pub fn remote_addr(&self) -> String {
         self.remote_addr.clone()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     pub fn input_delay(&self) -> i32 {
