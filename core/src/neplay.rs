@@ -12,7 +12,6 @@ use ggrs::{
 };
 
 use crate::model::player_draw::PlayerDraw;
-use crate::record::Record;
 use crate::{
     model::{
         ffi::config_ffi::ConfigFFI, game_state::GameState, input::Input,
@@ -28,7 +27,6 @@ pub struct Netplay {
     player_draw: PlayerDraw,
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
-    record: Record,
     current_inputs: Option<Vec<Input>>,
 }
 
@@ -40,7 +38,6 @@ impl Netplay {
             player_draw: PlayerDraw::Unkown,
             requests: vec![],
             game_state: GameState::empty(),
-            record: Record::new(),
             current_inputs: Some(vec![]),
         }
     }
@@ -150,8 +147,6 @@ impl Netplay {
                 Err(e) => {
                     self.session = Some(session.retrieve());
 
-                    self.export();
-
                     return Err(format!("GGRSError : {}", e.to_string()));
                 }
             };
@@ -216,13 +211,6 @@ impl Netplay {
                         Some(inp) => inp,
                         None => vec![],
                     };
-
-                    self.record.add_frame(
-                        self.game_state.frame(),
-                        inputs,
-                        self.game_state.clone(),
-                        self.player_draw,
-                    );
 
                     if self.is_test {
                         self.debug();
@@ -307,8 +295,6 @@ impl Netplay {
 
                     self.game_state.update_frame(*frame);
 
-                    self.record.remove_predicted_frames(*frame);
-
                     self.requests.remove(0);
 
                     Ok(self.game_state.clone())
@@ -357,10 +343,6 @@ impl Netplay {
         self.session = Some(session.retrieve());
 
         Ok(frames_ahead)
-    }
-
-    pub fn export(&self) {
-        self.record.export();
     }
 }
 

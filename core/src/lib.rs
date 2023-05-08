@@ -8,7 +8,6 @@ pub mod core;
 pub mod ffi;
 pub mod model;
 pub mod neplay;
-pub mod record;
 pub mod session;
 pub mod utils;
 

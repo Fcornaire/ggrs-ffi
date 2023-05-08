@@ -61,10 +61,7 @@ impl Session for P2PSession<GGRSConfig> {
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
-                GGRSEvent::Disconnected { addr: _ } => {
-                    netplay.export();
-                    events.push("Disconnected")
-                }
+                GGRSEvent::Disconnected { addr: _ } => events.push("Disconnected"),
 
                 GGRSEvent::NetworkInterrupted {
                     addr,
