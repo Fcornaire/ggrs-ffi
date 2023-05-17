@@ -176,3 +176,9 @@ pub unsafe extern "C" fn netplay_free_game_state(safe_bytes: SafeBytes) {
 
     np.reset_game_state();
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_current_frame() -> i32 {
+    let np = NETPLAY.lock().unwrap();
+    np.game_state().frame()
+}

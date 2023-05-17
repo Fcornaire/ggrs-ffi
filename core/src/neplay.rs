@@ -3,12 +3,12 @@ use rand::Rng;
 use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 use ggrs::{
-    GGRSError, GGRSRequest, InputStatus, PlayerType, SessionBuilder, SyncTestSession,
-    UdpNonBlockingSocket,
+    DesyncDetection, GGRSError, GGRSRequest, InputStatus, PlayerType, SessionBuilder,
+    SyncTestSession, UdpNonBlockingSocket,
 };
 
 use crate::model::player_draw::PlayerDraw;
@@ -28,6 +28,7 @@ pub struct Netplay {
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
     current_inputs: Option<Vec<Input>>,
+    logger: TcpStream,
 }
 
 impl Netplay {
@@ -39,7 +40,12 @@ impl Netplay {
             requests: vec![],
             game_state: GameState::empty(),
             current_inputs: Some(vec![]),
+            logger: TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to logger"),
         }
+    }
+
+    pub fn logger(&mut self) -> &mut TcpStream {
+        &mut self.logger
     }
 
     pub fn session(&mut self) -> Box<dyn Session> {
@@ -73,6 +79,7 @@ impl Netplay {
                         .unwrap()
                         .with_input_delay(config.input_delay() as usize)
                         .with_disconnect_timeout(Duration::from_secs(15))
+                        .with_desync_detection_mode(DesyncDetection::On { interval: 500 })
                         .start_p2p_session(socket)
                         .unwrap();
 
@@ -200,7 +207,14 @@ impl Netplay {
 
                     let buffer = bincode::serialize(&game_state.data()).unwrap();
                     let checksum = fletcher16(&buffer) as u128;
-                    cell.save(*frame, Some(game_state.clone()), Some(checksum));
+                    cell.save(*frame, Some(game_state.clone()), Some(checksum as u128));
+
+                    // self.logger
+                    //     .write(
+                    //         &format!("Rust: checksum at frame {frame} : {}", checksum.to_string())
+                    //             .as_bytes(),
+                    //     )
+                    //     .unwrap();
 
                     self.game_state = game_state.clone();
                     self.game_state.update_frame(*frame);

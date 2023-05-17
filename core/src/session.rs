@@ -86,6 +86,16 @@ impl Session for P2PSession<GGRSConfig> {
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
+                GGRSEvent::DesyncDetected {
+                    frame: _,
+                    local_checksum: _,
+                    remote_checksum: _,
+                    addr: _,
+                } => {
+                    // let str = format!("DesyncDetected from {addr} at frame {frame} , local checksum {local_checksum} , remote checksum {remote_checksum}");
+                    // let str: &'static str = Box::leak(str.into_boxed_str());
+                    // events.push(str)
+                }
             }
         }
 
