@@ -182,3 +182,9 @@ pub unsafe extern "C" fn netplay_current_frame() -> i32 {
     let np = NETPLAY.lock().unwrap();
     np.game_state().frame()
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_reset() {
+    let mut np = NETPLAY.lock().unwrap();
+    np.reset();
+}

@@ -28,7 +28,7 @@ pub struct Netplay {
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
     current_inputs: Option<Vec<Input>>,
-    logger: TcpStream,
+    // logger: TcpStream,
 }
 
 impl Netplay {
@@ -40,13 +40,24 @@ impl Netplay {
             requests: vec![],
             game_state: GameState::empty(),
             current_inputs: Some(vec![]),
-            logger: TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to logger"),
+            // logger: TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to logger"),
         }
     }
 
-    pub fn logger(&mut self) -> &mut TcpStream {
-        &mut self.logger
+    pub fn reset(&mut self) {
+        let mut session = self.session();
+
+        session.disconnect_all().unwrap();
+        self.requests.clear();
+        self.game_state = GameState::empty();
+        self.current_inputs = Some(vec![]);
+        self.is_test = false;
+        self.player_draw = PlayerDraw::Unkown;
     }
+
+    // pub fn logger(&mut self) -> &mut TcpStream {
+    //     &mut self.logger
+    // }
 
     pub fn session(&mut self) -> Box<dyn Session> {
         let session = self.session.take();
@@ -78,7 +89,7 @@ impl Netplay {
                         .add_player(PlayerType::Remote(remote_addr), 1)
                         .unwrap()
                         .with_input_delay(config.input_delay() as usize)
-                        .with_disconnect_timeout(Duration::from_secs(15))
+                        .with_disconnect_timeout(Duration::from_secs(5))
                         .with_desync_detection_mode(DesyncDetection::On { interval: 500 })
                         .start_p2p_session(socket)
                         .unwrap();
@@ -220,11 +231,6 @@ impl Netplay {
                     self.game_state.update_frame(*frame);
 
                     self.requests.remove(0);
-
-                    let inputs = match self.current_inputs.take() {
-                        Some(inp) => inp,
-                        None => vec![],
-                    };
 
                     if self.is_test {
                         self.debug();

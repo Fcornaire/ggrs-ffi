@@ -39,6 +39,7 @@ pub trait Session {
     fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError>;
     fn get_frames_ahead(&mut self) -> i32;
     fn retrieve(self: Box<Self>) -> SessionType;
+    fn disconnect_all(&mut self) -> Result<(), GGRSError>;
 }
 
 impl Session for P2PSession<GGRSConfig> {
@@ -125,6 +126,17 @@ impl Session for P2PSession<GGRSConfig> {
     fn retrieve(self: Box<Self>) -> SessionType {
         SessionType::P2P(*self)
     }
+
+    //TODO: Properly disconnect all players
+    fn disconnect_all(&mut self) -> Result<(), GGRSError> {
+        match self.disconnect_player(1) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                println!("Error disconnecting player: {:?}", e); //The other probably already disconnected
+                Ok(())
+            }
+        }
+    }
 }
 
 impl Session for SyncTestSession<GGRSConfig> {
@@ -152,5 +164,9 @@ impl Session for SyncTestSession<GGRSConfig> {
 
     fn retrieve(self: Box<Self>) -> SessionType {
         SessionType::Test(*self)
+    }
+
+    fn disconnect_all(&mut self) -> Result<(), GGRSError> {
+        Ok(())
     }
 }
