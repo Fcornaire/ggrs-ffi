@@ -1,48 +1,24 @@
 use ggrs::{GGRSError, GGRSEvent, GGRSRequest, NetworkStats, P2PSession, SyncTestSession};
 
-use crate::{model::input::Input, neplay::Netplay, GGRSConfig};
+use crate::{config::ggrs_config::GGRSConfig, model::input::Input, neplay::Netplay};
 
 pub enum SessionType {
     P2P(P2PSession<GGRSConfig>),
     Test(SyncTestSession<GGRSConfig>),
 }
 
-impl SessionType {
-    pub fn new_p2p(p2p: P2PSession<GGRSConfig>) -> Self {
-        Self::P2P(p2p)
-    }
-
-    pub fn new_test(test: SyncTestSession<GGRSConfig>) -> Self {
-        Self::Test(test)
-    }
-
-    pub fn p2p(&mut self) -> &mut P2PSession<GGRSConfig> {
-        match self {
-            Self::P2P(p2p) => p2p,
-            Self::Test(_) => panic!("Wrong call! this is a Test session"),
-        }
-    }
-
-    pub fn test(&mut self) -> &mut SyncTestSession<GGRSConfig> {
-        match self {
-            Self::Test(test) => test,
-            Self::P2P(_) => panic!("Wrong call! this is a P2P session"),
-        }
-    }
-}
-
-pub trait Session {
+pub trait Session<Config: ggrs::Config> {
     fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str>;
     fn poll_remote(&mut self);
     fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError>;
-    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<GGRSConfig>>, GGRSError>;
+    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<Config>>, GGRSError>;
     fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError>;
     fn get_frames_ahead(&mut self) -> i32;
     fn retrieve(self: Box<Self>) -> SessionType;
-    fn disconnect_all(&mut self) -> Result<(), GGRSError>;
+    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError>;
 }
 
-impl Session for P2PSession<GGRSConfig> {
+impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
     fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str> {
         let mut events: Vec<&'static str> = vec![];
 
@@ -128,8 +104,8 @@ impl Session for P2PSession<GGRSConfig> {
     }
 
     //TODO: Properly disconnect all players
-    fn disconnect_all(&mut self) -> Result<(), GGRSError> {
-        match self.disconnect_player(1) {
+    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError> {
+        match self.disconnect_player(netplay.remote_player_handle() as usize) {
             Ok(_) => Ok(()),
             Err(e) => {
                 println!("Error disconnecting player: {:?}", e); //The other probably already disconnected
@@ -139,7 +115,7 @@ impl Session for P2PSession<GGRSConfig> {
     }
 }
 
-impl Session for SyncTestSession<GGRSConfig> {
+impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
     fn events(&mut self, _netplay: &mut Netplay) -> Vec<&'static str> {
         vec![]
     }
@@ -166,7 +142,7 @@ impl Session for SyncTestSession<GGRSConfig> {
         SessionType::Test(*self)
     }
 
-    fn disconnect_all(&mut self) -> Result<(), GGRSError> {
+    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError> {
         Ok(())
     }
 }

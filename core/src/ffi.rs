@@ -3,32 +3,41 @@ use std::{mem::forget, os::raw::c_char};
 use macros::{catch_action_result, catch_status};
 
 use crate::{
+    config::app_config::AppConfig,
     core::{
         action_result::ActionResult,
         unmanaged::{safe_bytes::SafeBytes, unmanaged_bytes::UnmanagedBytes},
     },
     model::{
-        ffi::{config_ffi::ConfigFFI, input_ffi::Inputs, netplay_request_ffi::NetplayRequests},
+        ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests},
         game_state::GameState,
         input::Input,
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
     },
-    Events, Status, NETPLAY,
+    Events, Status, NETPLAY, SHOULD_STOP_MATCHBOX_FUTURE,
 };
 use std::ffi::CString;
 
 #[no_mangle]
 #[catch_status]
-pub unsafe extern "C" fn netplay_init(config_ffi: *mut ConfigFFI) -> Status {
+pub unsafe extern "C" fn netplay_init(config: SafeBytes) -> Status {
     let mut np = NETPLAY.lock().unwrap();
 
-    np.init(config_ffi)
+    let safe_config = AppConfig::new(config);
+
+    np.init(safe_config)
 }
 
 #[no_mangle]
 #[catch_status]
 pub extern "C" fn netplay_poll() -> Status {
+    let is_disconnected = is_disconnected();
+
+    if is_disconnected {
+        return Status::ko(Box::leak("Peer Disconnected!".to_string().into_boxed_str()));
+    }
+
     let mut np = NETPLAY.lock().unwrap();
 
     np.poll_remote()
@@ -63,26 +72,32 @@ pub extern "C" fn netplay_events_free(events: Events) {
 
 #[no_mangle]
 pub extern "C" fn netplay_advance_frame(input: Input) -> Status {
-    let mut np = NETPLAY.lock().unwrap();
+    let is_disconnected = is_disconnected();
 
-    let res = std::panic::catch_unwind(move || match np.advance_frame(input) {
-        Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
-    });
+    if !is_disconnected {
+        let mut np = NETPLAY.lock().unwrap();
 
-    match res {
-        Ok(status) => status,
-        Err(e) => {
-            let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown error".to_string()
-            };
-            Status::ko(Box::leak(error_msg.into_boxed_str()))
+        let res = std::panic::catch_unwind(move || match np.advance_frame(input) {
+            Ok(_) => Status::ok(),
+            Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+        });
+
+        match res {
+            Ok(status) => return status,
+            Err(e) => {
+                let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown error".to_string()
+                };
+                return Status::ko(Box::leak(error_msg.into_boxed_str()));
+            }
         }
     }
+
+    Status::ko(Box::leak("Peer Disconnected!".to_string().into_boxed_str()))
 }
 
 #[no_mangle]
@@ -184,7 +199,35 @@ pub unsafe extern "C" fn netplay_current_frame() -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_reset() {
+#[catch_status]
+pub unsafe extern "C" fn netplay_reset() -> Status {
     let mut np = NETPLAY.lock().unwrap();
-    np.reset();
+    np.reset()
+}
+
+#[no_mangle]
+pub extern "C" fn netplay_local_player_handle() -> i32 {
+    let np = NETPLAY.lock().unwrap();
+
+    np.local_player_handle()
+}
+
+#[no_mangle]
+pub extern "C" fn netplay_remote_player_handle() -> i32 {
+    let np = NETPLAY.lock().unwrap();
+
+    np.remote_player_handle()
+}
+
+fn is_disconnected() -> bool {
+    match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+        Ok(should_stop) => {
+            if *should_stop {
+                return true;
+            }
+        }
+        Err(_) => {}
+    }
+
+    false
 }

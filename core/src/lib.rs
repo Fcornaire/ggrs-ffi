@@ -1,9 +1,13 @@
-use ggrs::Config;
 use lazy_static::lazy_static;
-use model::{game_state::GameState, input::Input};
 use neplay::Netplay;
-use std::{ffi::CString, mem::forget, net::SocketAddr, os::raw::c_char, sync::Mutex};
+use std::{
+    ffi::CString,
+    mem::forget,
+    os::raw::c_char,
+    sync::{Arc, Mutex},
+};
 
+pub mod config;
 pub mod core;
 pub mod ffi;
 pub mod model;
@@ -13,14 +17,7 @@ pub mod utils;
 
 lazy_static! {
     pub static ref NETPLAY: Mutex<Netplay> = Mutex::new(Netplay::new(None));
-}
-
-#[derive(Debug)]
-pub struct GGRSConfig;
-impl Config for GGRSConfig {
-    type Input = Input; // Copy + Clone + PartialEq + bytemuck::Pod + bytemuck::Zeroable
-    type State = GameState; // Clone
-    type Address = SocketAddr; // Clone + PartialEq + Eq + Hash
+    pub static ref SHOULD_STOP_MATCHBOX_FUTURE: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 }
 
 #[repr(u8)]
@@ -36,10 +33,6 @@ impl Bool {
             Bool::False => false,
         }
     }
-
-    // pub fn is_false(&self) -> bool {
-    //     !self.is_true()
-    // }
 }
 
 #[repr(C)]

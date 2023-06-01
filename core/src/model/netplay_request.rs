@@ -1,7 +1,7 @@
 use ggrs::GGRSRequest;
 use serde::{Deserialize, Serialize};
 
-use crate::GGRSConfig;
+use crate::config::ggrs_config::GGRSConfig;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialOrd, PartialEq)]
