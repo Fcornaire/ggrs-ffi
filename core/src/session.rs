@@ -19,7 +19,7 @@ pub trait Session<Config: ggrs::Config> {
 }
 
 impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
-    fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str> {
+    fn events(&mut self, _netplay: &mut Netplay) -> Vec<&'static str> {
         let mut events: Vec<&'static str> = vec![];
 
         for (_, event) in (self).events().enumerate() {
@@ -142,7 +142,7 @@ impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
         SessionType::Test(*self)
     }
 
-    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError> {
+    fn disconnect_all(&mut self, _netplay: &mut Netplay) -> Result<(), GGRSError> {
         Ok(())
     }
 }
