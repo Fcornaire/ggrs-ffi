@@ -68,9 +68,9 @@ impl Netplay {
     }
 
     pub fn reset(&mut self) -> Result<(), String> {
-        // let session = self.session();
+        let mut session = self.session();
 
-        // session.disconnect_all(self).unwrap();
+        session.disconnect_all(self).unwrap();
 
         self.local_player_handle = None;
         self.remote_player_handle = None;
@@ -78,6 +78,7 @@ impl Netplay {
         self.game_state = GameState::empty();
         self.current_inputs = Some(vec![]);
         self.is_test = false;
+        self.session = None;
 
         let mut stp = SHOULD_STOP_MATCHBOX_FUTURE.lock().unwrap();
         *stp = true;
