@@ -80,8 +80,12 @@ impl Netplay {
         self.is_test = false;
         self.session = None;
 
-        let mut stp = SHOULD_STOP_MATCHBOX_FUTURE.lock().unwrap();
-        *stp = true;
+        match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+            Ok(mut stp) => {
+                *stp = true;
+            }
+            Err(_) => {}
+        }
 
         Ok(())
     }
