@@ -38,7 +38,6 @@ pub struct Netplay {
     requests: Vec<GGRSRequest<GGRSConfig>>,
     game_state: GameState,
     current_inputs: Option<Vec<Input>>,
-    // logger: TcpStream,
 }
 
 impl Netplay {
@@ -51,7 +50,6 @@ impl Netplay {
             requests: vec![],
             game_state: GameState::empty(),
             current_inputs: Some(vec![]),
-            // logger: TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to logger"),
         }
     }
 
@@ -97,10 +95,6 @@ impl Netplay {
 
         return Err("reset : No session found".to_string());
     }
-
-    // pub fn logger(&mut self) -> &mut TcpStream {
-    //     &mut self.logger
-    // }
 
     pub fn session(&mut self) -> Option<Box<dyn Session<GGRSConfig>>> {
         let session = self.session.take();
@@ -468,13 +462,6 @@ impl Netplay {
                     let buffer = bincode::serialize(&game_state.data()).unwrap();
                     let checksum = fletcher16(&buffer) as u128;
                     cell.save(*frame, Some(game_state.clone()), Some(checksum as u128));
-
-                    // self.logger
-                    //     .write(
-                    //         &format!("Rust: checksum at frame {frame} : {}", checksum.to_string())
-                    //             .as_bytes(),
-                    //     )
-                    //     .unwrap();
 
                     self.game_state = game_state.clone();
                     self.game_state.update_frame(*frame);
