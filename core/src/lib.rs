@@ -2,9 +2,7 @@ use backtrace::Backtrace;
 use exts::MutexNetplayExtensions;
 use neplay::Netplay;
 use once_cell::sync::{Lazy, OnceCell};
-use std::{
-    ffi::CString, io::Write, mem::forget, net::TcpStream, os::raw::c_char, panic, sync::Mutex,
-};
+use std::{ffi::CString, mem::forget, os::raw::c_char, panic, sync::Mutex};
 
 pub mod config;
 pub mod core;
@@ -22,28 +20,10 @@ static SHOULD_STOP_MATCHBOX_FUTURE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(
 unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
     let mutex = NETPLAY_INSTANCE.get_or_init(|| {
         panic::set_hook(Box::new(|panic_info| {
-            let res = TcpStream::connect("127.0.0.1:8080");
             let backtrace = Backtrace::new();
 
-            if let Ok(mut stream) = res {
-                if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-                    stream
-                        .write(
-                            &format!("[ggrs-ffi] panic occured {s:?} => {:?}", backtrace)
-                                .as_bytes(),
-                        )
-                        .unwrap();
-                } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-                    stream
-                        .write(
-                            &format!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace).as_bytes(),
-                        )
-                        .unwrap();
-                } else {
-                    stream
-                        .write(&format!("[ggrs-ffi] panic occured").as_bytes())
-                        .unwrap();
-                }
+            if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+                println!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace);
             }
         }));
 
