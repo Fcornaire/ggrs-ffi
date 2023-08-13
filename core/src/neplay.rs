@@ -1,13 +1,13 @@
 use flate2::read::GzDecoder;
 use futures::{select, FutureExt};
 use futures_timer::Delay;
-use matchbox_socket::{PeerId, PeerState, WebRtcSocket};
+use matchbox_socket::{PeerId, WebRtcSocket};
 use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
 use ggrs::{
@@ -15,6 +15,8 @@ use ggrs::{
     SyncTestSession, UdpNonBlockingSocket,
 };
 
+use crate::core::unmanaged::safe_bytes::SafeBytes;
+use crate::set_netplay_disconnected;
 use crate::{
     config::{
         app_config::AppConfig,
@@ -68,39 +70,45 @@ impl Netplay {
     }
 
     pub fn reset(&mut self) -> Result<(), String> {
-        let mut session = self.session();
+        let session_res = self.session();
 
-        session.disconnect_all(self).unwrap();
+        if let Some(mut session) = session_res {
+            session.disconnect_all(self).unwrap();
 
-        self.local_player_handle = None;
-        self.remote_player_handle = None;
-        self.requests.clear();
-        self.game_state = GameState::empty();
-        self.current_inputs = Some(vec![]);
-        self.is_test = false;
-        self.session = None;
+            self.local_player_handle = None;
+            self.remote_player_handle = None;
+            self.requests.clear();
+            self.game_state = GameState::empty();
+            self.current_inputs = Some(vec![]);
+            self.is_test = false;
+            self.session = None;
 
-        match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-            Ok(mut stp) => {
-                *stp = true;
+            match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+                Ok(mut stp) => {
+                    *stp = true;
+                }
+                Err(_) => {}
             }
-            Err(_) => {}
+
+            set_netplay_disconnected(true);
+
+            return Ok(());
         }
 
-        Ok(())
+        return Err("reset : No session found".to_string());
     }
 
     // pub fn logger(&mut self) -> &mut TcpStream {
     //     &mut self.logger
     // }
 
-    pub fn session(&mut self) -> Box<dyn Session<GGRSConfig>> {
+    pub fn session(&mut self) -> Option<Box<dyn Session<GGRSConfig>>> {
         let session = self.session.take();
 
         match (session, self.is_test) {
-            (Some(SessionType::P2P(p2p)), false) => Box::new(p2p),
-            (Some(SessionType::Test(test)), true) => Box::new(test),
-            _ => panic!("Wrong call!"),
+            (Some(SessionType::P2P(p2p)), false) => Some(Box::new(p2p)),
+            (Some(SessionType::Test(test)), true) => Some(Box::new(test)),
+            _ => None,
         }
     }
 
@@ -122,89 +130,98 @@ impl Netplay {
                 *stp = false;
             }
 
+            set_netplay_disconnected(false);
+
             let shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>> = Arc::new(Mutex::new(vec![]));
             let clone_for_thread = shared_players.clone();
 
-            std::thread::spawn(move || {
-                let rt = Runtime::new().unwrap();
+            let handle = std::thread::Builder::new()
+                .name("matchbox-thread".to_string())
+                .spawn(move || {
+                    let rt = Runtime::new().unwrap();
 
-                rt.block_on(async {
-                    let loop_fut = future_msg.fuse();
-                    futures::pin_mut!(loop_fut);
+                    rt.block_on(async {
+                        let loop_fut = future_msg.fuse();
+                        futures::pin_mut!(loop_fut);
 
-                    let timeout = Delay::new(Duration::from_millis(5));
-                    futures::pin_mut!(timeout);
+                        let timeout = Delay::new(Duration::from_millis(5));
+                        futures::pin_mut!(timeout);
 
-                    let mut should_stop = false;
+                        let mut should_stop = false;
 
-                    while !should_stop {
-                        {
-                            match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                                Ok(stp) => {
-                                    should_stop = *stp;
+                        while !should_stop {
+                            {
+                                match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+                                    Ok(stp) => {
+                                        should_stop = *stp;
+                                    }
+                                    Err(_) => {}
+                                }
+                            }
+
+                            socket.update_peers();
+
+                            match clone_for_thread.lock() {
+                                Ok(mut players) => {
+                                    *players = socket.players();
                                 }
                                 Err(_) => {}
                             }
-                        }
 
-                        for (_, state) in socket.update_peers() {
-                            match state {
-                                PeerState::Connected => {}
-                                PeerState::Disconnected => {
+                            select! {
+                                // Restart this loop every 10ms
+                                _ = (&mut timeout).fuse() => {
+                                    timeout.reset(Duration::from_millis(10));
+                                }
+
+                                // Or break if the message loop ends (disconnected, closed, etc.)
+                                _ = &mut loop_fut => {
                                     let mut can_go = false;
 
-                                    while !can_go {
-                                        match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                                            Ok(mut stp) => {
-                                                *stp = true;
-                                                can_go = true;
+                                        while !can_go {
+                                            match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+                                                Ok(mut stp) => {
+                                                    *stp = true;
+                                                    can_go = true;
+                                                }
+                                                Err(_) => {}
                                             }
-                                            Err(_) => {}
                                         }
-                                    }
 
+                                        set_netplay_disconnected(true);
                                     break;
                                 }
                             }
                         }
-
-                        match clone_for_thread.lock() {
-                            Ok(mut players) => {
-                                *players = socket.players();
-                            }
-                            Err(_) => {}
-                        }
-
-                        select! {
-                            // Restart this loop every 10ms
-                            _ = (&mut timeout).fuse() => {
-                                timeout.reset(Duration::from_millis(10));
-                            }
-
-                            // Or break if the message loop ends (disconnected, closed, etc.)
-                            _ = &mut loop_fut => {
-                                let mut can_go = false;
-
-                                    while !can_go {
-                                        match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                                            Ok(mut stp) => {
-                                                *stp = true;
-                                                can_go = true;
-                                            }
-                                            Err(_) => {}
-                                        }
-                                    }
-                                break;
-                            }
-                        }
-                    }
+                    });
                 });
-            });
+
+            match handle {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(format!("Failed to spawn matchbox thread : {}", e));
+                }
+            }
 
             let mut players = vec![];
             let clone = shared_players.clone();
+            let mut should_stop = false;
+            let start_time = Instant::now();
 
-            while players.len() < 2 {
+            while !should_stop {
+                if start_time.elapsed().as_secs() >= 30 {
+                    break;
+                }
+
+                {
+                    match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+                        Ok(stp) => {
+                            should_stop = *stp;
+                        }
+                        Err(_) => {}
+                    }
+                }
+
                 match clone.try_lock() {
                     Ok(pl) => {
                         players = pl.clone();
@@ -212,33 +229,42 @@ impl Netplay {
                     Err(_) => {}
                 }
 
-                std::thread::sleep(Duration::from_millis(60));
-            }
-
-            for (i, player) in players.into_iter().enumerate() {
-                let mut pl: PlayerType<Address> = PlayerType::Local;
-
-                match player {
-                    PlayerType::Local => {
-                        self.local_player_handle = Some(i);
-                        pl = PlayerType::Local;
-                    }
-                    PlayerType::Remote(peer_id) => {
-                        self.remote_player_handle = Some(i);
-                        pl = PlayerType::Remote(Address::Peer(peer_id));
-                    }
-                    _ => {}
+                if players.len() == 2 {
+                    break;
                 }
 
-                session = session.add_player(pl, i).expect("failed to add player");
+                std::thread::sleep(Duration::from_millis(17));
             }
 
-            let sess = session
-                .start_p2p_session(channel)
-                .expect("failed to start session");
+            if players.len() == 2 {
+                for (i, player) in players.into_iter().enumerate() {
+                    let mut pl: PlayerType<Address> = PlayerType::Local;
 
-            self.session = Some(SessionType::P2P(sess));
-            return Ok(());
+                    match player {
+                        PlayerType::Local => {
+                            self.local_player_handle = Some(i);
+                            pl = PlayerType::Local;
+                        }
+                        PlayerType::Remote(peer_id) => {
+                            self.remote_player_handle = Some(i);
+                            pl = PlayerType::Remote(Address::Peer(peer_id));
+                        }
+                        _ => {}
+                    }
+
+                    session = session.add_player(pl, i).expect("failed to add player");
+                }
+
+                let sess = session
+                    .start_p2p_session(channel)
+                    .expect("failed to start session");
+
+                self.session = Some(SessionType::P2P(sess));
+
+                return Ok(());
+            }
+
+            return Err("Initialization failed".to_string());
         }
 
         if let Some(local) = config.netplay.local {
@@ -297,86 +323,116 @@ impl Netplay {
     }
 
     pub fn poll_remote(&mut self) -> Result<(), String> {
-        let mut session = self.session();
+        let session_res = self.session();
 
-        session.poll_remote();
+        if let Some(mut session) = session_res {
+            session.poll_remote();
 
-        self.session = Some(session.retrieve());
+            self.session = Some(session.retrieve());
 
-        Ok(())
+            Ok(())
+        } else {
+            Err("poll_remote: No session found".to_string())
+        }
+    }
+
+    pub fn is_synchronized(&mut self) -> bool {
+        let session_res = self.session();
+
+        if let Some(session) = session_res {
+            let is_syncronized = session.is_synchronized();
+
+            self.session = Some(session.retrieve());
+
+            is_syncronized
+        } else {
+            false
+        }
     }
 
     pub fn advance_frame(&mut self, input: Input) -> Result<(), String> {
-        let mut session = self.session();
+        let session_res = self.session();
 
-        if let None = self.local_player_handle {
-            return Err(format!("No local player handle"));
-        }
+        if let Some(mut session) = session_res {
+            if let None = self.local_player_handle {
+                return Err(format!("No local player handle"));
+            }
 
-        if let None = self.remote_player_handle {
-            return Err(format!("No remote player handle"));
-        }
+            if let None = self.remote_player_handle {
+                return Err(format!("No remote player handle"));
+            }
 
-        if let Err(e) = session.add_local_input(self.local_player_handle.unwrap(), input) {
-            return Err(format!("Couldn't added local input : {}", e));
-        }
+            if let Err(e) = session.add_local_input(self.local_player_handle.unwrap(), input) {
+                return Err(format!("Couldn't added local input : {}", e));
+            }
 
-        if self.is_test {
-            let res: Result<(), GGRSError>;
+            if self.is_test {
+                let res: Result<(), GGRSError>;
 
-            // let mut rng = rand::thread_rng();
+                // let mut rng = rand::thread_rng();
 
-            // let rand = rng.gen_range(0..10);
+                // let rand = rng.gen_range(0..10);
 
-            // if rand % 2 == 0 {
-            if self.game_state.frame() % 120 > 60 {
-                res = session.add_local_input(self.remote_player_handle.unwrap(), Input::default());
+                // if rand % 2 == 0 {
+                if self.game_state.frame() % 120 > 60 {
+                    res = session
+                        .add_local_input(self.remote_player_handle.unwrap(), Input::default());
+                } else {
+                    res = session
+                        .add_local_input(self.remote_player_handle.unwrap(), Input::default());
+                    //we don't care on test mode
+                }
+
+                if let Err(e) = res {
+                    return Err(format!("Couldn't added test input : {}", e));
+                }
+            }
+
+            if self.requests().is_empty() {
+                match session.advance_frame() {
+                    Ok(requests) => {
+                        self.update_requests(requests);
+
+                        self.session = Some(session.retrieve());
+
+                        return Ok(());
+                    }
+                    Err(GGRSError::PredictionThreshold) => {
+                        self.session = Some(session.retrieve());
+
+                        return Err("PredictionThreshold".to_string());
+                    }
+                    Err(e) => {
+                        self.session = Some(session.retrieve());
+
+                        return Err(format!("GGRSError : {}", e.to_string()));
+                    }
+                };
             } else {
-                res = session.add_local_input(self.remote_player_handle.unwrap(), Input::default());
-                //we don't care on test mode
-            }
+                self.session = Some(session.retrieve());
 
-            if let Err(e) = res {
-                return Err(format!("Couldn't added test input : {}", e));
+                return Err(
+                    "Netplay request is not empty. Finish using request before advancing"
+                        .to_string(),
+                );
             }
         }
 
-        if self.requests().is_empty() {
-            match session.advance_frame() {
-                Ok(requests) => {
-                    self.update_requests(requests);
-
-                    self.session = Some(session.retrieve());
-
-                    return Ok(());
-                }
-                Err(GGRSError::PredictionThreshold) => {
-                    self.session = Some(session.retrieve());
-
-                    return Err("PredictionThreshold".to_string());
-                }
-                Err(e) => {
-                    self.session = Some(session.retrieve());
-
-                    return Err(format!("GGRSError : {}", e.to_string()));
-                }
-            };
-        } else {
-            self.session = Some(session.retrieve());
-
-            return Err(
-                "Netplay request is not empty. Finish using request before advancing".to_string(),
-            );
-        }
+        Err("advance_frame: No session found".to_string())
     }
 
     pub fn events(&mut self) -> Vec<&'static str> {
-        let mut session = self.session();
-        let events: Vec<&'static str> = session.events(self);
+        let session_res = self.session();
 
-        self.session = Some(session.retrieve());
+        if let Some(mut session) = session_res {
+            let events: Vec<&'static str> = session.events(self);
 
-        events
+            self.session = Some(session.retrieve());
+
+            events
+        } else {
+            vec![]
+        }
     }
 
     pub fn game_state(&self) -> GameState {
@@ -495,7 +551,7 @@ impl Netplay {
         vec![]
     }
 
-    pub unsafe fn handle_load_game_state_request(&mut self) -> Result<GameState, String> {
+    pub unsafe fn handle_load_game_state_request(&mut self) -> Result<SafeBytes, String> {
         if !self.requests.is_empty() {
             let req = self.requests.first().unwrap();
 
@@ -510,7 +566,7 @@ impl Netplay {
 
                     self.requests.remove(0);
 
-                    Ok(self.game_state.clone())
+                    Ok(self.game_state.clone().data().to_safe_bytes())
                 }
                 _ => {
                     let err = format!(
@@ -525,42 +581,50 @@ impl Netplay {
     }
 
     pub unsafe fn network_stats(&mut self, network_stats: *mut NetworkStats) -> Result<(), String> {
-        let mut session = self.session();
+        let session_res = self.session();
 
-        if let Some(remote_player_handle) = self.remote_player_handle {
-            let stats = session.net_stats(remote_player_handle);
-            let str = format!("{:?}", stats);
-            if let Ok(net) = stats {
-                (*network_stats) = NetworkStats::new(
-                    net.send_queue_len,
-                    net.ping,
-                    net.kbps_sent,
-                    net.local_frames_behind,
-                    net.remote_frames_behind,
-                );
+        if let Some(mut session) = session_res {
+            if let Some(remote_player_handle) = self.remote_player_handle {
+                let stats = session.net_stats(remote_player_handle);
+                let str = format!("{:?}", stats);
+                if let Ok(net) = stats {
+                    (*network_stats) = NetworkStats::new(
+                        net.send_queue_len,
+                        net.ping,
+                        net.kbps_sent,
+                        net.local_frames_behind,
+                        net.remote_frames_behind,
+                    );
 
+                    self.session = Some(session.retrieve());
+
+                    return Ok(());
+                }
                 self.session = Some(session.retrieve());
 
-                return Ok(());
+                return Err(str);
             }
+
             self.session = Some(session.retrieve());
 
-            return Err(str);
+            Err("No remote player handle found".to_string())
+        } else {
+            Err("network_stats : No session found".to_string())
         }
-
-        self.session = Some(session.retrieve());
-
-        Err("No remote player handle found".to_string())
     }
 
     pub fn frames_ahead(&mut self) -> Result<i32, String> {
-        let mut session = self.session();
+        let session_res = self.session();
 
-        let frames_ahead = session.get_frames_ahead();
+        if let Some(mut session) = session_res {
+            let frames_ahead = session.get_frames_ahead();
 
-        self.session = Some(session.retrieve());
+            self.session = Some(session.retrieve());
 
-        Ok(frames_ahead)
+            Ok(frames_ahead)
+        } else {
+            Err("frames_ahead : No session found".to_string())
+        }
     }
 }
 
