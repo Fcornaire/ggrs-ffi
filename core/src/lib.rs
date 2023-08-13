@@ -1,26 +1,78 @@
-use lazy_static::lazy_static;
+use backtrace::Backtrace;
+use exts::MutexNetplayExtensions;
 use neplay::Netplay;
+use once_cell::sync::{Lazy, OnceCell};
 use std::{
-    ffi::CString,
-    mem::forget,
-    os::raw::c_char,
-    sync::{Arc, Mutex},
+    ffi::CString, io::Write, mem::forget, net::TcpStream, os::raw::c_char, panic, sync::Mutex,
 };
 
 pub mod config;
 pub mod core;
+pub mod exts;
 pub mod ffi;
 pub mod model;
 pub mod neplay;
 pub mod session;
 pub mod utils;
 
-lazy_static! {
-    pub static ref NETPLAY: Mutex<Netplay> = Mutex::new(Netplay::new(None));
-    pub static ref SHOULD_STOP_MATCHBOX_FUTURE: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+static mut NETPLAY_INSTANCE: OnceCell<Mutex<Netplay>> = OnceCell::new();
+static NETPLAY_HAS_DISCONNECTED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+static SHOULD_STOP_MATCHBOX_FUTURE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
+    let mutex = NETPLAY_INSTANCE.get_or_init(|| {
+        panic::set_hook(Box::new(|panic_info| {
+            let res = TcpStream::connect("127.0.0.1:8080");
+            let backtrace = Backtrace::new();
+
+            if let Ok(mut stream) = res {
+                if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+                    stream
+                        .write(
+                            &format!("[ggrs-ffi] panic occured {s:?} => {:?}", backtrace)
+                                .as_bytes(),
+                        )
+                        .unwrap();
+                } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+                    stream
+                        .write(
+                            &format!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace).as_bytes(),
+                        )
+                        .unwrap();
+                } else {
+                    stream
+                        .write(&format!("[ggrs-ffi] panic occured").as_bytes())
+                        .unwrap();
+                }
+            }
+        }));
+
+        Mutex::new(Netplay::new(None))
+    });
+
+    mutex.ensure_not_poisoned();
+
+    mutex
 }
 
-#[repr(u8)]
+unsafe fn reset_netplay_instance() {
+    NETPLAY_INSTANCE.take();
+
+    match NETPLAY_INSTANCE.set(Mutex::new(Netplay::new(None))) {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+}
+
+fn has_netplay_disconnected() -> bool {
+    NETPLAY_HAS_DISCONNECTED.lock().unwrap().clone()
+}
+
+fn set_netplay_disconnected(disconnected: bool) {
+    *NETPLAY_HAS_DISCONNECTED.lock().unwrap() = disconnected;
+}
+
+#[repr(C)]
 enum Bool {
     False = 0,
     True = 1,

@@ -1,6 +1,8 @@
 use ggrs::{GGRSError, GGRSEvent, GGRSRequest, NetworkStats, P2PSession, SyncTestSession};
 
-use crate::{config::ggrs_config::GGRSConfig, model::input::Input, neplay::Netplay};
+use crate::{
+    config::ggrs_config::GGRSConfig, model::input::Input, neplay::Netplay, set_netplay_disconnected,
+};
 
 pub enum SessionType {
     P2P(P2PSession<GGRSConfig>),
@@ -10,6 +12,7 @@ pub enum SessionType {
 pub trait Session<Config: ggrs::Config> {
     fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str>;
     fn poll_remote(&mut self);
+    fn is_synchronized(&self) -> bool;
     fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError>;
     fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<Config>>, GGRSError>;
     fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError>;
@@ -26,7 +29,7 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
             match event {
                 GGRSEvent::Synchronizing { addr, total, count } => {
                     let str = format!(
-                        "Synchronizing addr {} total {} count {}",
+                        "Synchronizing with {} total {} count {}",
                         addr, total, count
                     );
                     let str: &'static str = Box::leak(str.into_boxed_str());
@@ -34,18 +37,24 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
                     events.push(str)
                 }
                 GGRSEvent::Synchronized { addr } => {
-                    let str = format!("Synchronized addr {}", addr);
+                    let str = format!("Synchronized with {addr}");
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
-                GGRSEvent::Disconnected { addr: _ } => events.push("Disconnected"),
+                GGRSEvent::Disconnected { addr } => {
+                    set_netplay_disconnected(true);
+                    let str = format!("Disconnected from {addr}");
+                    let str: &'static str = Box::leak(str.into_boxed_str());
+
+                    events.push(str)
+                }
 
                 GGRSEvent::NetworkInterrupted {
                     addr,
                     disconnect_timeout,
                 } => {
                     let str = format!(
-                        "NetworkInterrupted addr {} disconnect timout {}",
+                        "NetworkInterrupted with {}, will disconnect in {} ms",
                         addr, disconnect_timeout
                     );
                     let str: &'static str = Box::leak(str.into_boxed_str());
@@ -53,13 +62,13 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
                 }
 
                 GGRSEvent::WaitRecommendation { skip_frames } => {
-                    let str = format!("WaitRecommendation skip frames {}", skip_frames);
+                    let str = format!("WaitRecommendation skip frames {} (Ignored)", skip_frames);
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
 
                 GGRSEvent::NetworkResumed { addr } => {
-                    let str = format!("NetworkResumed addr {}", addr);
+                    let str = format!("NetworkResumed with {}", addr);
                     let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
@@ -81,6 +90,10 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
 
     fn poll_remote(&mut self) {
         self.poll_remote_clients();
+    }
+
+    fn is_synchronized(&self) -> bool {
+        self.current_state() == ggrs::SessionState::Running
     }
 
     fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError> {
@@ -121,6 +134,10 @@ impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
     }
 
     fn poll_remote(&mut self) {}
+
+    fn is_synchronized(&self) -> bool {
+        false
+    }
 
     fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError> {
         self.add_local_input(player_handle, input)

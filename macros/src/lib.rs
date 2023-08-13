@@ -57,7 +57,7 @@ pub fn catch_action_result(_attr: TokenStream, item: TokenStream) -> TokenStream
         unsafe fn #fn_name(#fn_args) #fn_return_type {
             match std::panic::catch_unwind(|| {
                 match #fn_body {
-                    Ok(gs) => ActionResult::ok(gs.data().to_safe_bytes()),
+                    Ok(sb) => ActionResult::ok(sb),
                     Err(e) => {
                         ActionResult::ko(e, UnmanagedBytes::empty().to_safe_bytes())
                     }
@@ -67,7 +67,11 @@ pub fn catch_action_result(_attr: TokenStream, item: TokenStream) -> TokenStream
                 Err(e) => {
                     if let Some(er) = e.downcast_ref::<&str>() {
                         return ActionResult::ko(er.to_string(), UnmanagedBytes::empty().to_safe_bytes());
-                    } else {
+                    }
+                    else if let Some(er) = e.downcast_ref::<String>() {
+                        return ActionResult::ko(er.to_string(), UnmanagedBytes::empty().to_safe_bytes());
+                    }
+                    else {
                         return ActionResult::ko("Unkown error".to_string(),UnmanagedBytes::empty().to_safe_bytes());
                     }
                 }
