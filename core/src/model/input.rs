@@ -1,21 +1,20 @@
+use super::vector2f::Vector2f;
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
-
-use super::vector2f::Vector2f;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Pod, Zeroable, Default, Serialize, Deserialize)]
 pub struct Input {
-    jump_check: i32,
-    jump_pressed: i32,
-    shoot_check: i32,
-    shoot_pressed: i32,
-    alt_shoot_check: i32,
-    alt_shoot_pressed: i32,
-    dodge_check: i32,
-    dodge_pressed: i32,
-    arrow_pressed: i32,
-    move_x: i32,
-    move_y: i32,
+    jump_check: usize,
+    jump_pressed: usize,
+    shoot_check: usize,
+    shoot_pressed: usize,
+    alt_shoot_check: usize,
+    alt_shoot_pressed: usize,
+    dodge_check: usize,
+    dodge_pressed: usize,
+    arrow_pressed: usize,
+    move_x: usize,
+    move_y: usize,
     aim_axis: Vector2f,
 }
