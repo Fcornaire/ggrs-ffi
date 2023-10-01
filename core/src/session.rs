@@ -1,4 +1,5 @@
 use ggrs::{GGRSError, GGRSEvent, GGRSRequest, NetworkStats, P2PSession, SyncTestSession};
+use tracing::{info, warn};
 
 use crate::{
     config::ggrs_config::GGRSConfig, model::input::Input, neplay::Netplay, set_netplay_disconnected,
@@ -25,7 +26,9 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
     fn events(&mut self, _netplay: &mut Netplay) -> Vec<&'static str> {
         let mut events: Vec<&'static str> = vec![];
 
-        for (_, event) in (self).events().enumerate() {
+        for event in self.events() {
+            info!("Event: {:?}", event);
+
             match event {
                 GGRSEvent::Synchronizing { addr, total, count } => {
                     let str = format!(
@@ -121,7 +124,7 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
         match self.disconnect_player(netplay.remote_player_handle() as usize) {
             Ok(_) => Ok(()),
             Err(e) => {
-                println!("Error disconnecting player: {:?}", e); //The other probably already disconnected
+                warn!("Error disconnecting player: {:?}", e); //The other probably already disconnected
                 Ok(())
             }
         }
