@@ -3,6 +3,7 @@ use exts::MutexNetplayExtensions;
 use neplay::Netplay;
 use once_cell::sync::{Lazy, OnceCell};
 use std::{ffi::CString, mem::forget, os::raw::c_char, panic, sync::Mutex};
+use tracing::error;
 
 pub mod config;
 pub mod core;
@@ -19,11 +20,18 @@ static SHOULD_STOP_MATCHBOX_FUTURE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(
 
 unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
     let mutex = NETPLAY_INSTANCE.get_or_init(|| {
+        tracing_subscriber::fmt()
+            .compact()
+            .with_thread_names(true)
+            .with_target(false)
+            .with_max_level(tracing::Level::INFO)
+            .init();
+
         panic::set_hook(Box::new(|panic_info| {
             let backtrace = Backtrace::new();
 
             if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-                println!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace);
+                error!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace);
             }
         }));
 

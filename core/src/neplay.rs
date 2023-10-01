@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
+use tracing::{error, info};
 
 use ggrs::{
     DesyncDetection, GGRSError, GGRSRequest, InputStatus, PlayerType, SessionBuilder,
@@ -134,8 +135,21 @@ impl Netplay {
                 .spawn(move || {
                     let rt = Runtime::new().unwrap();
 
+                    info!("Starting matchbox thread");
+
                     rt.block_on(async {
-                        let loop_fut = future_msg.fuse();
+                        let loop_fut = async {
+                            match future_msg.await {
+                                Ok(()) => info!("Matchbox thread exited cleanly!"),
+                                Err(e) => match e {
+                                    matchbox_socket::Error::Signaling(e) => {
+                                        error!("Signaling error: {}", e);
+                                    }
+                                },
+                            }
+                        }
+                        .fuse();
+
                         futures::pin_mut!(loop_fut);
 
                         let timeout = Delay::new(Duration::from_millis(5));
@@ -170,6 +184,7 @@ impl Netplay {
 
                                 // Or break if the message loop ends (disconnected, closed, etc.)
                                 _ = &mut loop_fut => {
+                                    info!("Matchbox message loop ended!");
                                     let mut can_go = false;
 
                                         while !can_go {
@@ -193,6 +208,7 @@ impl Netplay {
             match handle {
                 Ok(_) => {}
                 Err(e) => {
+                    error!("Failed to spawn matchbox thread : {}", e);
                     return Err(format!("Failed to spawn matchbox thread : {}", e));
                 }
             }
@@ -253,6 +269,8 @@ impl Netplay {
                     .start_p2p_session(channel)
                     .expect("failed to start session");
 
+                info!("Starting p2p session");
+
                 self.session = Some(SessionType::P2P(sess));
 
                 return Ok(());
@@ -291,6 +309,8 @@ impl Netplay {
                         .start_p2p_session(socket)
                         .unwrap();
 
+                    info!("Starting local p2p session");
+
                     self.session = Some(SessionType::P2P(session));
                     return Ok(());
                 }
@@ -299,6 +319,8 @@ impl Netplay {
         }
 
         if config.is_test() {
+            info!("Starting test session");
+
             let session: SyncTestSession<GGRSConfig> = SessionBuilder::new()
                 .with_num_players(2)
                 .with_check_distance(config.test.unwrap().check_distance as usize)
