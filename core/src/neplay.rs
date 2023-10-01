@@ -1,10 +1,6 @@
-use flate2::read::GzDecoder;
 use futures::{select, FutureExt};
 use futures_timer::Delay;
 use matchbox_socket::{PeerId, WebRtcSocket};
-use serde_json::Value;
-use std::fs;
-use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -490,10 +486,6 @@ impl Netplay {
 
                     self.requests.remove(0);
 
-                    if self.is_test {
-                        self.debug();
-                    }
-
                     Ok(())
                 }
                 _ => {
@@ -506,26 +498,6 @@ impl Netplay {
         }
 
         Err("Requests are empty".to_string())
-    }
-
-    fn debug(&self) {
-        let data = self.game_state.clone().data().bytes();
-        let mut gz = GzDecoder::new(&*data);
-        let mut s = String::new();
-        gz.read_to_string(&mut s).unwrap();
-
-        //Mostly for debug purpose, need refacto
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let gs = serde_json::to_string_pretty(&v).unwrap();
-
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .create(true)
-            .open("gs.json")
-            .expect("Unable to open");
-
-        file.write_all(gs.as_bytes()).expect("Unable to write data");
     }
 
     pub fn handle_advance_frame_request(&mut self) -> Vec<Input> {
