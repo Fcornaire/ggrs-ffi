@@ -1,9 +1,7 @@
-use backtrace::Backtrace;
 use exts::MutexNetplayExtensions;
 use neplay::Netplay;
 use once_cell::sync::{Lazy, OnceCell};
-use std::{ffi::CString, mem::forget, os::raw::c_char, panic, sync::Mutex};
-use tracing::error;
+use std::{ffi::CString, mem::forget, os::raw::c_char, sync::Mutex};
 
 pub mod config;
 pub mod core;
@@ -26,14 +24,6 @@ unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
             .with_target(false)
             .with_max_level(tracing::Level::INFO)
             .init();
-
-        panic::set_hook(Box::new(|panic_info| {
-            let backtrace = Backtrace::new();
-
-            if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-                error!("[ggrs-ffi] panic occured {s:?}=> {:?}", backtrace);
-            }
-        }));
 
         Mutex::new(Netplay::new(None))
     });

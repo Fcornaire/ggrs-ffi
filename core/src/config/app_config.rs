@@ -24,8 +24,12 @@ impl AppConfig {
 #[derive(Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct NetplayConfig {
-    pub local: Option<NetplayLocalConfig>,
-    pub server: Option<NetplayServerConfig>,
+    pub num_players: i32,
+    pub spectators: Option<Vec<String>>,
+    pub players: Option<Vec<String>>,
+    pub local_conf: Option<NetplayLocalConfig>,
+    pub server_conf: Option<NetplayServerConfig>,
+    pub spectator_conf: Option<NetplaySpectatorConfig>,
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
@@ -40,6 +44,15 @@ pub struct NetplayLocalConfig {
 #[serde(rename_all = "PascalCase")]
 pub struct NetplayServerConfig {
     pub room_url: Option<String>,
+    pub is_host: bool,
+}
+
+//Add a spectator config
+#[derive(Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct NetplaySpectatorConfig {
+    pub room_url: Option<String>,
+    pub to_spectate: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
