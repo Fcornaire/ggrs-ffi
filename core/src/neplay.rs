@@ -295,41 +295,48 @@ impl Netplay {
                 })
                 .collect();
 
-            //Add players by index
-            let mut index = 0;
-            for (_, player) in players_connected_typed.clone().into_iter().enumerate() {
-                match player {
-                    PlayerType::Remote(peer_id) => {
-                        match self.current_remote_players {
-                            Some(ref mut players) => {
-                                players.push(Address::Peer(peer_id));
+            if players_connected.len()
+                == config.netplay.num_players as usize + spectator_from_config.len()
+            {
+                //Add players by index
+                let mut index = 0;
+                for (_, player) in players_connected_typed.clone().into_iter().enumerate() {
+                    match player {
+                        PlayerType::Remote(peer_id) => {
+                            match self.current_remote_players {
+                                Some(ref mut players) => {
+                                    players.push(Address::Peer(peer_id));
+                                }
+                                None => {
+                                    self.current_remote_players =
+                                        Some(vec![Address::Peer(peer_id)]);
+                                }
                             }
-                            None => {
-                                self.current_remote_players = Some(vec![Address::Peer(peer_id)]);
+
+                            if self.local_player_handle.is_none() {
+                                self.local_player_handle = Some(index);
+                            } else {
+                                self.remote_player_handle = Some(index);
                             }
-                        }
 
-                        if self.local_player_handle.is_none() {
-                            self.local_player_handle = Some(index);
-                        } else {
-                            self.remote_player_handle = Some(index);
+                            index += 1;
                         }
-
-                        index += 1;
+                        _ => {}
                     }
-                    _ => {}
                 }
+
+                let host_peer =
+                    PeerId(Uuid::parse_str(&spectate.to_spectate.clone().unwrap()).unwrap());
+
+                let sess = session.start_spectator_session(Address::Peer(host_peer), channel);
+
+                self.session = Some(SessionType::Spectate(sess));
+                self.is_spectator = true;
+
+                return Ok(());
             }
 
-            let host_peer =
-                PeerId(Uuid::parse_str(&spectate.to_spectate.clone().unwrap()).unwrap());
-
-            let sess = session.start_spectator_session(Address::Peer(host_peer), channel);
-
-            self.session = Some(SessionType::Spectate(sess));
-            self.is_spectator = true;
-
-            return Ok(());
+            return Err("Initialization failed, missing players".to_string());
         }
 
         if let Some(server) = config.netplay.server_conf {
@@ -493,6 +500,7 @@ impl Netplay {
 
             if players_connected.len()
                 == config.netplay.num_players as usize + spectator_from_config.len()
+                || players_connected.len() == config.netplay.num_players as usize
             {
                 //Add players
                 for (i, player) in players_connected_typed
