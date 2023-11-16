@@ -1,7 +1,6 @@
 use std::{mem::forget, os::raw::c_char};
 
 use macros::{catch_action_result, catch_status};
-use tracing::info;
 
 use crate::{
     config::app_config::AppConfig,

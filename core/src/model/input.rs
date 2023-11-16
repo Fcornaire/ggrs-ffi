@@ -17,4 +17,5 @@ pub struct Input {
     move_x: usize,
     move_y: usize,
     aim_axis: Vector2f,
+    aim_right_axis: Vector2f,
 }
