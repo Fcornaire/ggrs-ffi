@@ -1,7 +1,7 @@
 use tracing::{info, warn};
 
 use ggrs::{
-    GGRSError, GGRSEvent, GGRSRequest, NetworkStats, P2PSession, SpectatorSession, SyncTestSession,
+    GgrsError, GgrsEvent, GgrsRequest, NetworkStats, P2PSession, SpectatorSession, SyncTestSession,
 };
 
 use crate::{
@@ -15,52 +15,54 @@ pub enum SessionType {
 }
 
 pub trait Session<Config: ggrs::Config> {
-    fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str>;
+    fn events(&mut self, netplay: &mut Netplay) -> Vec<String>;
     fn poll_remote(&mut self);
     fn is_synchronized(&self) -> bool;
-    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError>;
-    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<Config>>, GGRSError>;
-    fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError>;
+    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GgrsError>;
+    fn advance_frame(&mut self) -> Result<Vec<GgrsRequest<Config>>, GgrsError>;
+    fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GgrsError>;
     fn get_frames_ahead(&mut self) -> i32;
     fn retrieve(self: Box<Self>) -> SessionType;
-    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError>;
+    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GgrsError>;
 }
 
 impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
-    fn events(&mut self, netplay: &mut Netplay) -> Vec<&'static str> {
-        let mut events: Vec<&'static str> = vec![];
+    fn events(&mut self, netplay: &mut Netplay) -> Vec<String> {
+        let mut events: Vec<String> = vec![];
 
         for event in self.events() {
             info!("Event: {:?}", event);
 
             match event {
-                GGRSEvent::Synchronizing { addr, total, count } => {
+                GgrsEvent::Synchronizing { addr, total, count } => {
                     let str = format!(
                         "Synchronizing with {} total {} count {}",
                         addr, total, count
                     );
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     events.push(str)
                 }
-                GGRSEvent::Synchronized { addr } => {
-                    let str = format!("Synchronized with {addr}");
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-                    events.push(str)
-                }
-                GGRSEvent::Disconnected { addr } => {
+                GgrsEvent::Synchronized { addr } => {
                     if !netplay.is_a_remote_player(addr.clone()) {
                         continue;
                     }
 
-                    set_netplay_disconnected(true);
-                    let str = format!("Disconnected from {addr}");
-                    let str: &'static str = Box::leak(str.into_boxed_str());
+                    let str = format!("Synchronized with {addr}");
+                    events.push(str)
+                }
+                GgrsEvent::Disconnected { addr } => {
+                    if !netplay.is_a_remote_player(addr.clone()) {
+                        continue;
+                    }
 
+                    if netplay.remove_remote_player(&addr) == 0 {
+                        set_netplay_disconnected(true);
+                    }
+
+                    let str = format!("Disconnected from {addr}");
                     events.push(str)
                 }
 
-                GGRSEvent::NetworkInterrupted {
+                GgrsEvent::NetworkInterrupted {
                     addr,
                     disconnect_timeout,
                 } => {
@@ -72,34 +74,30 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
                         "NetworkInterrupted with {}, will disconnect in {} ms",
                         addr, disconnect_timeout
                     );
-                    let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
 
-                GGRSEvent::WaitRecommendation { skip_frames } => {
+                GgrsEvent::WaitRecommendation { skip_frames } => {
                     let str = format!("WaitRecommendation skip frames {} (Ignored)", skip_frames);
-                    let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
 
-                GGRSEvent::NetworkResumed { addr } => {
+                GgrsEvent::NetworkResumed { addr } => {
                     if !netplay.is_a_remote_player(addr.clone()) {
                         continue;
                     }
 
                     let str = format!("NetworkResumed with {}", addr);
-                    let str: &'static str = Box::leak(str.into_boxed_str());
                     events.push(str)
                 }
-                GGRSEvent::DesyncDetected {
-                    frame: _,
-                    local_checksum: _,
-                    remote_checksum: _,
-                    addr: _,
+                GgrsEvent::DesyncDetected {
+                    frame,
+                    local_checksum,
+                    remote_checksum,
+                    addr,
                 } => {
-                    // let str = format!("DesyncDetected from {addr} at frame {frame} , local checksum {local_checksum} , remote checksum {remote_checksum}");
-                    // let str: &'static str = Box::leak(str.into_boxed_str());
-                    // events.push(str)
+                    let str = format!("DesyncDetected from {addr} at frame {frame} , local checksum {local_checksum} , remote checksum {remote_checksum}");
+                    events.push(str)
                 }
             }
         }
@@ -115,15 +113,15 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
         self.current_state() == ggrs::SessionState::Running
     }
 
-    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError> {
+    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GgrsError> {
         self.add_local_input(player_handle, input)
     }
 
-    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<GGRSConfig>>, GGRSError> {
+    fn advance_frame(&mut self) -> Result<Vec<GgrsRequest<GGRSConfig>>, GgrsError> {
         self.advance_frame()
     }
 
-    fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GGRSError> {
+    fn net_stats(&mut self, remote_player_handle: usize) -> Result<NetworkStats, GgrsError> {
         self.network_stats(remote_player_handle)
     }
 
@@ -136,7 +134,7 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
     }
 
     //TODO: Properly disconnect all players
-    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GGRSError> {
+    fn disconnect_all(&mut self, netplay: &mut Netplay) -> Result<(), GgrsError> {
         match self.disconnect_player(netplay.remote_player_handle() as usize) {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -148,7 +146,7 @@ impl Session<GGRSConfig> for P2PSession<GGRSConfig> {
 }
 
 impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
-    fn events(&mut self, _netplay: &mut Netplay) -> Vec<&'static str> {
+    fn events(&mut self, _netplay: &mut Netplay) -> Vec<String> {
         vec![]
     }
 
@@ -158,15 +156,15 @@ impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
         false
     }
 
-    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GGRSError> {
+    fn add_local_input(&mut self, player_handle: usize, input: Input) -> Result<(), GgrsError> {
         self.add_local_input(player_handle, input)
     }
 
-    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<GGRSConfig>>, GGRSError> {
+    fn advance_frame(&mut self) -> Result<Vec<GgrsRequest<GGRSConfig>>, GgrsError> {
         self.advance_frame()
     }
 
-    fn net_stats(&mut self, _remote_player_handle: usize) -> Result<NetworkStats, GGRSError> {
+    fn net_stats(&mut self, _remote_player_handle: usize) -> Result<NetworkStats, GgrsError> {
         Ok(NetworkStats::new())
     }
 
@@ -178,47 +176,42 @@ impl Session<GGRSConfig> for SyncTestSession<GGRSConfig> {
         SessionType::Test(*self)
     }
 
-    fn disconnect_all(&mut self, _netplay: &mut Netplay) -> Result<(), GGRSError> {
+    fn disconnect_all(&mut self, _netplay: &mut Netplay) -> Result<(), GgrsError> {
         Ok(())
     }
 }
 
 impl Session<GGRSConfig> for SpectatorSession<GGRSConfig> {
-    fn events(&mut self, _netplay: &mut Netplay) -> Vec<&'static str> {
-        let mut events: Vec<&'static str> = vec![];
+    fn events(&mut self, netplay: &mut Netplay) -> Vec<String> {
+        let mut events: Vec<String> = vec![];
 
-        for (_, event) in (self).events().enumerate() {
+        for event in (self).events() {
             match event {
-                GGRSEvent::Synchronizing { addr, total, count } => {
+                GgrsEvent::Synchronizing { addr, total, count } => {
                     let str = format!(
                         "Synchronizing with {} total {} count {}",
                         addr, total, count
                     );
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
-                GGRSEvent::Synchronized { addr } => {
+                GgrsEvent::Synchronized { addr } => {
                     let str = format!("Synchronized with {addr}");
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
-                GGRSEvent::Disconnected { addr } => {
-                    set_netplay_disconnected(true);
+                GgrsEvent::Disconnected { addr } => {
+                    netplay.mark_host_gone();
+
                     let str = format!("Disconnected from {addr}");
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
 
-                GGRSEvent::NetworkInterrupted {
+                GgrsEvent::NetworkInterrupted {
                     addr,
                     disconnect_timeout,
                 } => {
@@ -226,39 +219,32 @@ impl Session<GGRSConfig> for SpectatorSession<GGRSConfig> {
                         "NetworkInterrupted with {}, will disconnect in {} ms",
                         addr, disconnect_timeout
                     );
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
 
-                GGRSEvent::WaitRecommendation { skip_frames } => {
+                GgrsEvent::WaitRecommendation { skip_frames } => {
                     let str = format!("WaitRecommendation skip frames {} (Ignored)", skip_frames);
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
 
-                GGRSEvent::NetworkResumed { addr } => {
+                GgrsEvent::NetworkResumed { addr } => {
                     let str = format!("NetworkResumed with {}", addr);
-                    let str: &'static str = Box::leak(str.into_boxed_str());
-
                     println!("{}", str);
 
                     events.push(str)
                 }
-                GGRSEvent::DesyncDetected {
-                    frame: _,
-                    local_checksum: _,
-                    remote_checksum: _,
-                    addr: _,
+                GgrsEvent::DesyncDetected {
+                    frame,
+                    local_checksum,
+                    remote_checksum,
+                    addr,
                 } => {
-                    // let str = format!("DesyncDetected from {addr} at frame {frame} , local checksum {local_checksum} , remote checksum {remote_checksum}");
-                    // let str: &'static str = Box::leak(str.into_boxed_str());
-                    // events.push(str)
+                    let str = format!("DesyncDetected from {addr} at frame {frame} , local checksum {local_checksum} , remote checksum {remote_checksum}");
+                    events.push(str)
                 }
             }
         }
@@ -270,7 +256,7 @@ impl Session<GGRSConfig> for SpectatorSession<GGRSConfig> {
         self.poll_remote_clients();
     }
 
-    fn advance_frame(&mut self) -> Result<Vec<GGRSRequest<GGRSConfig>>, GGRSError> {
+    fn advance_frame(&mut self) -> Result<Vec<GgrsRequest<GGRSConfig>>, GgrsError> {
         self.advance_frame()
     }
 
@@ -278,7 +264,7 @@ impl Session<GGRSConfig> for SpectatorSession<GGRSConfig> {
         self.current_state() == ggrs::SessionState::Running
     }
 
-    fn add_local_input(&mut self, _player_handle: usize, _input: Input) -> Result<(), GGRSError> {
+    fn add_local_input(&mut self, _player_handle: usize, _input: Input) -> Result<(), GgrsError> {
         Ok(())
     }
 
@@ -286,11 +272,11 @@ impl Session<GGRSConfig> for SpectatorSession<GGRSConfig> {
         0
     }
 
-    fn net_stats(&mut self, _remote_player_handle: usize) -> Result<NetworkStats, GGRSError> {
+    fn net_stats(&mut self, _remote_player_handle: usize) -> Result<NetworkStats, GgrsError> {
         self.network_stats()
     }
 
-    fn disconnect_all(&mut self, _netplay: &mut Netplay) -> Result<(), GGRSError> {
+    fn disconnect_all(&mut self, _netplay: &mut Netplay) -> Result<(), GgrsError> {
         Ok(())
     }
 

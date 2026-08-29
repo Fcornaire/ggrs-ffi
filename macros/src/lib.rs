@@ -4,43 +4,51 @@ use syn::{parse_macro_input, ItemFn};
 
 #[proc_macro_attribute]
 pub fn catch_status(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as ItemFn);
+    let input = syn::parse_macro_input!(item as syn::ItemFn);
 
-    let fn_name = input.sig.ident.clone();
-    let fn_body = input.block.clone();
-    let fn_return_type = &input.sig.output;
-    let fn_args = &input.sig.inputs;
+    let vis = input.vis.clone();
+    let sig = input.sig.clone();
+    let attrs = input.attrs.clone();
+    let ident = sig.ident.clone();
+    let unsafety = sig.unsafety;
+    let abi = sig.abi.clone();
+    let generics = sig.generics.clone();
+    let inputs = sig.inputs.clone();
+    let output = sig.output.clone();
+    let body = input.block.clone();
 
-    let output = quote! {
+    let abi_tokens = if let Some(a) = abi {
+        quote::quote! { #a }
+    } else {
+        quote::quote! { extern "C" }
+    };
+
+    let output = quote::quote! {
+        #(#attrs)*
         #[no_mangle]
-        unsafe fn #fn_name(#fn_args) #fn_return_type {
+        #vis #unsafety #abi_tokens fn #ident #generics (#inputs) #output {
             match std::panic::catch_unwind(|| {
-                match #fn_body {
+                match #body {
                     Ok(_) => Status::ok(),
-                    Err(e) => {
-                        Status::ko(Box::leak(e.into_boxed_str()))
-                    }
+                    Err(e) => Status::ko(&e),
                 }
             }) {
                 Ok(status) => status,
                 Err(e) => {
                     let error_msg = if let Some(s) = e.downcast_ref::<&str>() {
                         s.to_string()
-                    }
-                    else if let Some(s) = e.downcast_ref::<String>() {
+                    } else if let Some(s) = e.downcast_ref::<String>() {
                         s.clone()
-                    }
-                    else {
+                    } else {
                         "unknown error".to_string()
                     };
-                    Status::ko(Box::leak(error_msg.into_boxed_str()))
+                    Status::ko(&error_msg)
                 }
             }
         }
     };
 
-    let output = TokenStream::from(output);
-    output
+    TokenStream::from(output)
 }
 
 #[proc_macro_attribute]

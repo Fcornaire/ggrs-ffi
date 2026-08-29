@@ -19,7 +19,7 @@ impl ActionResult {
     pub fn ko(msg: String, data: SafeBytes) -> Self {
         Self {
             data,
-            status: Status::ko(Box::leak(msg.into_boxed_str())),
+            status: Status::ko(&msg),
         }
     }
 }

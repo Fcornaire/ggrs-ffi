@@ -1,4 +1,4 @@
-use ggrs::GGRSRequest;
+use ggrs::GgrsRequest;
 use serde::{Deserialize, Serialize};
 
 use crate::config::ggrs_config::GGRSConfig;
@@ -12,11 +12,11 @@ pub enum NetplayRequest {
 }
 
 impl NetplayRequest {
-    pub fn new(request: &GGRSRequest<GGRSConfig>) -> Self {
+    pub fn new(request: &GgrsRequest<GGRSConfig>) -> Self {
         match request {
-            GGRSRequest::AdvanceFrame { inputs: _ } => NetplayRequest::AdvanceFrame,
-            GGRSRequest::LoadGameState { cell: _, frame: _ } => NetplayRequest::LoadGameState,
-            GGRSRequest::SaveGameState { cell: _, frame: _ } => NetplayRequest::SaveGameState,
+            GgrsRequest::AdvanceFrame { inputs: _ } => NetplayRequest::AdvanceFrame,
+            GgrsRequest::LoadGameState { cell: _, frame: _ } => NetplayRequest::LoadGameState,
+            GgrsRequest::SaveGameState { cell: _, frame: _ } => NetplayRequest::SaveGameState,
         }
     }
 }

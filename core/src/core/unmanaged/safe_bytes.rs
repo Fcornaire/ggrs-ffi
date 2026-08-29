@@ -22,7 +22,9 @@ impl SafeBytes {
         }
 
         unsafe {
-            drop(Box::from_raw(self.ptr));
+            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                self.ptr, self.size,
+            )));
         }
     }
 }

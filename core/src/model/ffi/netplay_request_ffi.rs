@@ -1,25 +1,19 @@
-use std::mem::forget;
-
 use crate::model::netplay_request::NetplayRequest;
 
 #[repr(C)]
 pub struct NetplayRequests {
     pub data: *const NetplayRequest,
-    pub len: usize,
+    pub len: i32,
 }
 
 impl NetplayRequests {
     pub fn new(netplay_requests: Vec<NetplayRequest>) -> Self {
         let len = netplay_requests.len();
-        let clone = netplay_requests.clone();
-        let requests = clone.as_ptr();
-
-        forget(requests); //TODO: swith to box
-        forget(clone);
+        let data = Box::into_raw(netplay_requests.into_boxed_slice()) as *const NetplayRequest;
 
         Self {
-            data: requests,
-            len,
+            data,
+            len: len as i32,
         }
     }
 

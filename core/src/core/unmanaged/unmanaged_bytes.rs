@@ -1,5 +1,3 @@
-use std::mem::forget;
-
 use serde::{Deserialize, Serialize};
 
 use super::safe_bytes::SafeBytes;
@@ -24,23 +22,16 @@ impl UnmanagedBytes {
     }
 
     pub fn new(safe_bytes: SafeBytes) -> Self {
-        let byte_vec = unsafe { safe_bytes.slice() };
-        let vec = byte_vec.to_vec();
-        let size = vec.len();
+        let bytes = unsafe { safe_bytes.slice() }.to_vec();
+        let size = bytes.len();
 
-        Self {
-            bytes: vec.clone(),
-            size,
-        }
+        Self { bytes, size }
     }
 
     pub fn to_safe_bytes(&mut self) -> SafeBytes {
-        let mut data = self.bytes.clone();
+        let data = self.bytes.clone().into_boxed_slice();
+        let size = data.len();
 
-        let safe = Box::new(SafeBytes::new(data.as_mut_ptr(), self.size));
-
-        forget(data);
-
-        *safe
+        SafeBytes::new(Box::into_raw(data) as *mut u8, size)
     }
 }
