@@ -1,4 +1,4 @@
-use std::{mem::forget, os::raw::c_char};
+use std::os::raw::c_char;
 
 use macros::{catch_action_result, catch_status};
 
@@ -16,23 +16,32 @@ use crate::{
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
     },
-    Events, Status,
+    start_background_poller, stop_background_poller, Events, Status,
 };
 use std::ffi::CString;
 
 #[no_mangle]
 #[catch_status]
 pub unsafe extern "C" fn netplay_init(config: SafeBytes) -> Status {
-    let mut np = get_netplay_intance().lock().unwrap();
-
     let safe_config = AppConfig::new(config);
+    let is_test = safe_config.is_test();
 
-    np.init(safe_config)
+    let status = {
+        let mut np = get_netplay_intance().lock().unwrap();
+
+        np.init(safe_config)
+    };
+
+    if status.is_ok() && !is_test {
+        start_background_poller();
+    }
+
+    status
 }
 
 #[no_mangle]
 #[catch_status]
-pub extern "C" fn netplay_poll() -> Status {
+pub unsafe extern "C" fn netplay_poll() -> Status {
     if has_netplay_disconnected() {
         return Status::msg("Peer Disconnected!");
     }
@@ -80,7 +89,34 @@ pub unsafe extern "C" fn netplay_events_free(events: Events) {
     if events.data.is_null() {
         return;
     }
-    let _ = Vec::from_raw_parts(events.data as *mut Events, events.len, events.cap);
+    let strings = Vec::from_raw_parts(
+        events.data,
+        events.len.try_into().unwrap(),
+        events.cap.try_into().unwrap(),
+    );
+
+    for s in strings {
+        if !s.is_null() {
+            let _ = CString::from_raw(s);
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_set_test_inputs(data: *const Input, len: i32) -> Status {
+    let mut np = get_netplay_intance().lock().unwrap();
+
+    if data.is_null() || len <= 0 {
+        np.set_test_inputs(vec![]);
+
+        return Status::ok();
+    }
+
+    let slice = std::slice::from_raw_parts(data, len as usize);
+
+    np.set_test_inputs(slice.to_vec());
+
+    Status::ok()
 }
 
 #[no_mangle]
@@ -89,7 +125,7 @@ pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
 
     let res = std::panic::catch_unwind(move || match np.advance_frame(input) {
         Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+        Err(e) => Status::ko(&e),
     });
 
     match res {
@@ -102,7 +138,7 @@ pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
             } else {
                 "unknown error".to_string()
             };
-            return Status::ko(Box::leak(error_msg.into_boxed_str()));
+            return Status::ko(&error_msg);
         }
     }
 }
@@ -111,12 +147,7 @@ pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
 pub unsafe extern "C" fn netplay_get_requests() -> NetplayRequests {
     let np = get_netplay_intance().lock().unwrap();
 
-    let requests = np.requests();
-    let reqs = NetplayRequests::new(requests.clone());
-
-    forget(requests);
-
-    return reqs;
+    return NetplayRequests::new(np.requests());
 }
 
 #[no_mangle]
@@ -126,8 +157,8 @@ pub unsafe extern "C" fn netplay_requests_free(requests: NetplayRequests) {
     }
     let _ = Vec::from_raw_parts(
         requests.data as *mut NetplayRequest,
-        requests.len,
-        requests.len,
+        requests.len as usize,
+        requests.len as usize,
     );
 }
 
@@ -145,11 +176,7 @@ pub unsafe extern "C" fn netplay_save_game_state(game_state: SafeBytes) -> Statu
 pub unsafe extern "C" fn netplay_advance_game_state() -> Inputs {
     let mut np = get_netplay_intance().lock().unwrap();
 
-    let inputs = np.handle_advance_frame_request();
-    let inputs_ffi = Inputs::new(inputs.clone());
-    forget(inputs);
-
-    return inputs_ffi;
+    return Inputs::new(np.handle_advance_frame_request());
 }
 
 #[no_mangle]
@@ -165,16 +192,23 @@ pub unsafe extern "C" fn netplay_inputs_free(inputs: Inputs) {
     if inputs.data.is_null() {
         return;
     }
-    let _ = Vec::from_raw_parts(inputs.data as *mut Inputs, inputs.len, inputs.len);
+    let _ = Vec::from_raw_parts(
+        inputs.data as *mut Input,
+        inputs.len as usize,
+        inputs.len as usize,
+    );
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn netplay_network_stats(network_stats: *mut NetworkStats) -> Status {
+pub unsafe extern "C" fn netplay_network_stats(
+    player_handle: i32,
+    network_stats: *mut NetworkStats,
+) -> Status {
     let mut np = get_netplay_intance().lock().unwrap();
 
-    match np.network_stats(network_stats) {
+    match np.network_stats(player_handle, network_stats) {
         Ok(_) => Status::ok(),
-        Err(e) => Status::ko(Box::leak(e.into_boxed_str())),
+        Err(e) => Status::ko(&e),
     }
 }
 
@@ -192,8 +226,7 @@ pub unsafe extern "C" fn netplay_frames_ahead() -> i32 {
 pub unsafe extern "C" fn netplay_free_game_state(safe_bytes: SafeBytes) {
     let mut np = get_netplay_intance().lock().unwrap();
 
-    let slice = safe_bytes.slice();
-    drop(slice);
+    safe_bytes.release();
 
     np.reset_game_state();
 }
@@ -208,6 +241,8 @@ pub unsafe extern "C" fn netplay_current_frame() -> i32 {
 #[no_mangle]
 #[catch_status]
 pub unsafe extern "C" fn netplay_reset() -> Status {
+    stop_background_poller();
+
     let mut np = get_netplay_intance().lock().unwrap();
 
     np.reset()
@@ -225,4 +260,53 @@ pub unsafe extern "C" fn netplay_remote_player_handle() -> i32 {
     let np = get_netplay_intance().lock().unwrap();
 
     np.remote_player_handle()
+}
+
+/// Host only registers a late spectator
+#[no_mangle]
+pub unsafe extern "C" fn netplay_add_spectator(peer_id: *const c_char) -> Status {
+    if peer_id.is_null() {
+        return Status::ko("add_spectator : peer id is null");
+    }
+
+    let peer_id = match std::ffi::CStr::from_ptr(peer_id).to_str() {
+        Ok(s) => s,
+        Err(_) => return Status::ko("add_spectator : peer id is not valid"),
+    };
+
+    let mut np = get_netplay_intance().lock().unwrap();
+
+    match np.add_spectator(peer_id) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(&e),
+    }
+}
+
+/// Spectator only: confirmed frames left to replay before reaching the host
+#[no_mangle]
+pub unsafe extern "C" fn netplay_frames_behind() -> i32 {
+    let np = get_netplay_intance().lock().unwrap();
+
+    np.frames_behind()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_remote_player_handle_count() -> i32 {
+    let np = get_netplay_intance().lock().unwrap();
+
+    np.remote_player_handles().len() as i32
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_remote_player_handle_at(index: i32) -> i32 {
+    let np = get_netplay_intance().lock().unwrap();
+
+    if index < 0 {
+        return -1;
+    }
+
+    np.remote_player_handles()
+        .get(index as usize)
+        .map(|handle| *handle as i32)
+        .unwrap_or(-1)
 }

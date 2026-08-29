@@ -1,7 +1,16 @@
 use exts::MutexNetplayExtensions;
 use neplay::Netplay;
 use once_cell::sync::{Lazy, OnceCell};
-use std::{ffi::CString, mem::forget, os::raw::c_char, sync::Mutex};
+use std::{
+    collections::HashSet,
+    ffi::CString,
+    os::raw::c_char,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    time::Duration,
+};
 
 pub mod config;
 pub mod core;
@@ -10,40 +19,114 @@ pub mod ffi;
 pub mod model;
 pub mod neplay;
 pub mod session;
-pub mod utils;
 
-static mut NETPLAY_INSTANCE: OnceCell<Mutex<Netplay>> = OnceCell::new();
+static NETPLAY_INSTANCE: Lazy<Mutex<Netplay>> = Lazy::new(|| {
+    tracing_subscriber::fmt()
+        .compact()
+        .with_thread_names(true)
+        .with_target(false)
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    Mutex::new(Netplay::new(None))
+});
 static NETPLAY_HAS_DISCONNECTED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 static SHOULD_STOP_MATCHBOX_FUTURE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
+static CONNECTED_PEERS: Lazy<Mutex<HashSet<uuid::Uuid>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+pub fn set_connected_peers(peers: HashSet<uuid::Uuid>) {
+    if let Ok(mut set) = CONNECTED_PEERS.lock() {
+        *set = peers;
+    }
+}
+
+pub fn is_peer_connected(peer: &uuid::Uuid) -> bool {
+    CONNECTED_PEERS
+        .lock()
+        .map(|set| set.contains(peer))
+        .unwrap_or(false)
+}
+
+pub fn get_runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceCell<tokio::runtime::Runtime> = OnceCell::new();
+
+    RUNTIME.get_or_init(|| {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime
+    })
+}
+
 unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
-    let mutex = NETPLAY_INSTANCE.get_or_init(|| {
-        tracing_subscriber::fmt()
-            .compact()
-            .with_thread_names(true)
-            .with_target(false)
-            .with_max_level(tracing::Level::INFO)
-            .init();
+    NETPLAY_INSTANCE.ensure_not_poisoned();
 
-        Mutex::new(Netplay::new(None))
-    });
-
-    mutex.ensure_not_poisoned();
-
-    mutex
+    &NETPLAY_INSTANCE
 }
 
 unsafe fn reset_netplay_instance() {
-    NETPLAY_INSTANCE.take();
+    NETPLAY_INSTANCE.clear_poison();
 
-    match NETPLAY_INSTANCE.set(Mutex::new(Netplay::new(None))) {
-        Ok(_) => {}
-        Err(_) => {}
+    if let Ok(mut np) = NETPLAY_INSTANCE.lock() {
+        *np = Netplay::new(None);
     }
 }
 
 fn has_netplay_disconnected() -> bool {
     NETPLAY_HAS_DISCONNECTED.lock().unwrap().clone()
+}
+
+const POLLER_INTERVAL: Duration = Duration::from_millis(2);
+
+static POLLER_ALIVE: AtomicBool = AtomicBool::new(false);
+static POLLER_SHOULD_STOP: AtomicBool = AtomicBool::new(false);
+
+fn start_background_poller() {
+    POLLER_SHOULD_STOP.store(false, Ordering::SeqCst);
+
+    if POLLER_ALIVE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let spawned = std::thread::Builder::new()
+        .name("ggrs-poller".into())
+        .spawn(|| {
+            while !POLLER_SHOULD_STOP.load(Ordering::Relaxed) {
+                let polled = unsafe {
+                    match get_netplay_intance().lock() {
+                        Ok(mut np) => np.poll_remote().is_ok(),
+                        Err(_) => false,
+                    }
+                };
+
+                if !polled {
+                    break;
+                }
+
+                std::thread::sleep(POLLER_INTERVAL);
+            }
+
+            POLLER_ALIVE.store(false, Ordering::SeqCst);
+        });
+
+    if spawned.is_err() {
+        POLLER_ALIVE.store(false, Ordering::SeqCst);
+    }
+}
+
+fn stop_background_poller() {
+    POLLER_SHOULD_STOP.store(true, Ordering::SeqCst);
+
+    for _ in 0..200 {
+        if !POLLER_ALIVE.load(Ordering::SeqCst) {
+            return;
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn set_netplay_disconnected(disconnected: bool) {
@@ -72,7 +155,7 @@ pub struct Status {
 }
 
 impl Status {
-    fn new(is_ok: Bool, info: &'static str) -> Self {
+    fn new(is_ok: Bool, info: &str) -> Self {
         let c_str = CString::new(info).unwrap();
 
         Self {
@@ -89,11 +172,11 @@ impl Status {
         Self::new(Bool::True, "OK")
     }
 
-    pub fn msg(msg: &'static str) -> Self {
+    pub fn msg(msg: &str) -> Self {
         Self::new(Bool::True, msg)
     }
 
-    pub fn ko(info: &'static str) -> Self {
+    pub fn ko(info: &str) -> Self {
         Self::new(Bool::False, info)
     }
 }
@@ -101,28 +184,27 @@ impl Status {
 #[repr(C)]
 pub struct Events {
     pub data: *mut *mut c_char,
-    pub len: usize,
-    pub cap: usize,
+    pub len: i32,
+    pub cap: i32,
 }
 
 impl Events {
-    pub fn new(events: Vec<&str>) -> Self {
-        let mut c_strings: Vec<*mut c_char> = events
+    pub fn new(events: Vec<String>) -> Self {
+        let c_strings: Vec<*mut c_char> = events
             .iter()
             .map(|s| {
-                let s = CString::new(*s).unwrap();
+                let s = CString::new(s.as_str()).unwrap();
                 s.into_raw()
             })
             .collect();
 
-        let c_strings_ptr = c_strings.as_mut_ptr();
-
-        forget(c_strings);
+        let len = c_strings.len();
+        let data = Box::into_raw(c_strings.into_boxed_slice()) as *mut *mut c_char;
 
         Self {
-            data: c_strings_ptr,
-            len: events.len(),
-            cap: events.capacity(),
+            data,
+            len: len as i32,
+            cap: len as i32,
         }
     }
 

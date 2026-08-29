@@ -12,6 +12,7 @@ impl Config for GGRSConfig {
     type Input = Input; // Copy + Clone + PartialEq + bytemuck::Pod + bytemuck::Zeroable
     type State = GameState; // Clone
     type Address = Address; // Clone + PartialEq + Eq + Hash
+    type InputPredictor = ggrs::PredictRepeatLast;
 }
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq)]
@@ -45,7 +46,11 @@ impl ggrs::NonBlockingSocket<Address> for WebRtcChannel {
     fn send_to(&mut self, msg: &Message, addr: &Address) {
         match addr {
             Address::Socket(_) => panic!("Cannot send to socket address, use a peer id instead"),
-            Address::Peer(peer_id) => self.send(build_packet(msg), *peer_id),
+            Address::Peer(peer_id) => {
+                if let Err(e) = self.try_send(build_packet(msg), *peer_id) {
+                    tracing::warn!("Dropped packet to peer {}: {}", peer_id.0, e);
+                }
+            }
         }
     }
 
