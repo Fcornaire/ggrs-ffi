@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach the dll to"
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the dll
+        working-directory: core
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Upload Release
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          artifacts: "core/target/x86_64-pc-windows-msvc/release/ggrs_ffi.dll"
+          tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
