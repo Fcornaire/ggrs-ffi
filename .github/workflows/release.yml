@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach the dll to"
+        description: "Existing tag to attach the binaries to"
         required: true
 
 permissions:
@@ -15,21 +15,47 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: ggrs_ffi.dll
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: libggrs_ffi.so
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Build the dll
+      - name: Build
         working-directory: core
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: core/target/${{ matrix.target }}/release/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Upload Release
         uses: ncipollo/release-action@v1.14.0
         with:
-          artifacts: "core/target/x86_64-pc-windows-msvc/release/ggrs_ffi.dll"
+          artifacts: "artifacts/x86_64-pc-windows-msvc/ggrs_ffi.dll,artifacts/x86_64-unknown-linux-gnu/libggrs_ffi.so"
           tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           allowUpdates: true
           omitBodyDuringUpdate: true
