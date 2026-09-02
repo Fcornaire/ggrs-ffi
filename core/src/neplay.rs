@@ -186,7 +186,7 @@ impl Netplay {
             .with_max_prediction_window(scale(10))
             .with_fps(fps)
             .unwrap()
-            .with_disconnect_timeout(Duration::from_secs(7))
+            .with_disconnect_timeout(Duration::from_secs(15))
             .with_max_frames_behind(scale(50))
             .unwrap()
             .with_catchup_speed(scale(4).max(1))
