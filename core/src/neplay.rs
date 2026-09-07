@@ -1,6 +1,7 @@
 use futures::{select, FutureExt};
 use futures_timer::Delay;
 use matchbox_socket::{PeerId, WebRtcSocket};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -26,7 +27,7 @@ use crate::{
     session::{Session, SessionType},
     SHOULD_STOP_MATCHBOX_FUTURE,
 };
-use crate::{get_runtime, set_netplay_disconnected};
+use crate::{get_runtime, set_connected_peers, set_netplay_disconnected};
 
 const DESYNC_CHECK_INTERVAL: u32 = 120;
 
@@ -134,36 +135,27 @@ impl Netplay {
 
     pub fn reset(&mut self) -> Result<(), String> {
         let session_res = self.session();
+        let had_session = session_res.is_some();
 
         if let Some(mut session) = session_res {
             session.disconnect_all(self).unwrap();
-
-            self.local_player_handle = None;
-            self.remote_player_handles.clear();
-            self.num_players = 2;
-            self.requests.clear();
-            self.game_state = GameState::empty();
-            self.current_inputs = Some(vec![]);
-            self.current_remote_players = Some(vec![]);
-            self.is_test = false;
-            self.session = None;
-            self.pending_spectators.clear();
-            self.host_gone = false;
-            crate::set_connected_peers(std::collections::HashSet::new());
-
-            match SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                Ok(mut stp) => {
-                    *stp = true;
-                }
-                Err(_) => {}
-            }
-
-            set_netplay_disconnected(true);
-
-            return Ok(());
         }
 
-        return Err("reset : No session found".to_string());
+        *self = Netplay::new(None);
+
+        if !had_session {
+            return Err("reset : No session found".to_string());
+        }
+
+        set_connected_peers(HashSet::new());
+
+        if let Ok(mut stp) = SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
+            *stp = true;
+        }
+
+        set_netplay_disconnected(true);
+
+        Ok(())
     }
 
     pub fn session(&mut self) -> Option<Box<dyn Session<GGRSConfig>>> {
@@ -183,7 +175,9 @@ impl Netplay {
 
         SessionBuilder::<GGRSConfig>::new()
             .with_input_delay(config.input_delay as usize)
-            .with_max_prediction_window(scale(10))
+            .with_max_input_delay(config.max_input_delay.max(0) as usize)
+            .with_max_prediction_window(scale(15))
+            .with_max_rollback_window(scale(45))
             .with_fps(fps)
             .unwrap()
             .with_disconnect_timeout(Duration::from_secs(15))
@@ -600,6 +594,7 @@ impl Netplay {
             .unwrap()
             .with_check_distance(config.test.unwrap().check_distance as usize)
             .with_input_delay(config.input_delay as usize)
+            .with_max_input_delay(config.max_input_delay.max(0) as usize)
             .start_synctest_session()
             .unwrap();
 
