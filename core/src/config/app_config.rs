@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub test: Option<TestConfig>,
     #[serde(default)]
     pub fps: i32,
+    #[serde(default)]
+    pub max_input_delay: i32,
 }
 
 impl AppConfig {
