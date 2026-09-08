@@ -1,9 +1,5 @@
-use std::sync::Mutex;
-
 use ggrs::PlayerType;
 use matchbox_socket::{PeerId, WebRtcSocket};
-
-use crate::{neplay::Netplay, reset_netplay_instance};
 
 // matchbox_socket's `ggrs` feature helper, that feature compiles against crates.io ggrs
 // Don't work with our fork's
@@ -34,17 +30,5 @@ impl WebRtcSocketGgrsExtensions for WebRtcSocket {
                 }
             })
             .collect()
-    }
-}
-
-pub trait MutexNetplayExtensions {
-    unsafe fn ensure_not_poisoned(&self);
-}
-
-impl MutexNetplayExtensions for Mutex<Netplay> {
-    unsafe fn ensure_not_poisoned(&self) {
-        if self.is_poisoned() {
-            reset_netplay_instance();
-        }
     }
 }
