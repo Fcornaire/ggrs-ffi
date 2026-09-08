@@ -4,6 +4,7 @@ use matchbox_socket::{PeerId, WebRtcSocket};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -25,11 +26,14 @@ use crate::{
         network_stats::NetworkStats,
     },
     session::{Session, SessionType},
-    SHOULD_STOP_MATCHBOX_FUTURE,
 };
-use crate::{get_runtime, set_connected_peers, set_netplay_disconnected};
+use crate::{
+    get_runtime, mark_matchbox_loop, matchbox_stop_requested, set_connected_peers,
+    set_matchbox_stop, set_netplay_disconnected, stop_matchbox_loop,
+};
 
 const DESYNC_CHECK_INTERVAL: u32 = 120;
+const PLAYERS_WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub struct Netplay {
     pub local_player_handle: Option<usize>,
@@ -45,6 +49,7 @@ pub struct Netplay {
     current_remote_players: Option<Vec<Address>>,
     test_inputs: Option<Vec<Input>>,
     pending_spectators: Vec<Uuid>,
+    registered_spectators: HashSet<Uuid>,
     host_gone: bool,
 }
 
@@ -75,6 +80,7 @@ impl Netplay {
             current_remote_players: Some(vec![]),
             test_inputs: None,
             pending_spectators: vec![],
+            registered_spectators: HashSet::new(),
             host_gone: false,
         }
     }
@@ -138,19 +144,18 @@ impl Netplay {
         let had_session = session_res.is_some();
 
         if let Some(mut session) = session_res {
-            session.disconnect_all(self).unwrap();
+            if let Err(e) = session.disconnect_all(self) {
+                warn!("reset : disconnect_all failed : {:?}", e);
+            }
         }
 
         *self = Netplay::new(None);
 
-        if !had_session {
-            return Err("reset : No session found".to_string());
-        }
-
+        stop_matchbox_loop();
         set_connected_peers(HashSet::new());
 
-        if let Ok(mut stp) = SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-            *stp = true;
+        if !had_session {
+            return Err("reset : No session found".to_string());
         }
 
         set_netplay_disconnected(true);
@@ -195,19 +200,16 @@ impl Netplay {
         mut socket: WebRtcSocket,
         future_msg: F,
         shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>>,
-        max_players: usize,
     ) -> Result<(), String>
     where
         F: std::future::Future<Output = Result<(), matchbox_socket::Error>> + Send + 'static,
     {
-        {
-            let mut stp = SHOULD_STOP_MATCHBOX_FUTURE.lock().unwrap();
-            *stp = false;
-        }
-
+        stop_matchbox_loop();
+        set_matchbox_stop(false);
         set_netplay_disconnected(false);
+        mark_matchbox_loop(true);
 
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name(thread_name.to_string())
             .spawn(move || {
                 info!("Starting matchbox thread");
@@ -233,24 +235,12 @@ impl Netplay {
                     let timeout = Delay::new(Duration::from_millis(10));
                     futures::pin_mut!(timeout);
 
-                    let mut ignore_player_update = false;
-
-                    loop {
-                        if let Ok(stp) = SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                            if *stp {
-                                break;
-                            }
-                        }
-
+                    while !matchbox_stop_requested() {
                         socket.update_peers();
-                        crate::set_connected_peers(socket.connected_peers().map(|p| p.0).collect());
+                        set_connected_peers(socket.connected_peers().map(|p| p.0).collect());
 
-                        if !ignore_player_update {
-                            if let Ok(mut players) = shared_players.lock() {
-                                *players = socket.players();
-                            }
-
-                            ignore_player_update = socket.players().len() >= max_players;
+                        if let Ok(mut players) = shared_players.lock() {
+                            *players = socket.players();
                         }
 
                         select! {
@@ -260,75 +250,115 @@ impl Netplay {
                             _ = &mut loop_fut => {
                                 info!("Matchbox message loop ended!");
 
-                                if let Ok(mut stp) = SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                                    *stp = true;
-                                }
-
+                                set_matchbox_stop(true);
                                 set_netplay_disconnected(true);
-
-                                break;
                             }
                         }
                     }
                 });
-            })
-            .map_err(|e| format!("Failed to spawn {} : {}", thread_name, e))?;
+
+                mark_matchbox_loop(false);
+            });
+
+        if let Err(e) = spawned {
+            mark_matchbox_loop(false);
+
+            return Err(format!("Failed to spawn {} : {}", thread_name, e));
+        }
 
         Ok(())
     }
 
-    fn wait_for_players(
-        shared_players: &Arc<Mutex<Vec<PlayerType<PeerId>>>>,
-        expected: usize,
-    ) -> Vec<PlayerType<PeerId>> {
-        let mut players_connected = vec![];
-        let mut should_stop = false;
-        let start_time = Instant::now();
-
-        while !should_stop {
-            if start_time.elapsed().as_secs() >= 20 {
-                break;
-            }
-
-            if let Ok(stp) = SHOULD_STOP_MATCHBOX_FUTURE.try_lock() {
-                should_stop = *stp;
-            }
-
-            if let Ok(pl) = shared_players.try_lock() {
-                players_connected = pl.clone();
-            }
-
-            if players_connected.len() == expected {
-                break;
-            }
-
-            std::thread::sleep(Duration::from_millis(17));
-        }
-
-        players_connected
+    fn parse_peer(id: &str) -> Result<PeerId, String> {
+        Uuid::parse_str(id)
+            .map(PeerId)
+            .map_err(|e| format!("invalid peer id '{}' : {}", id, e))
     }
 
-    fn classify_peers(
-        players_connected: &[PlayerType<PeerId>],
-        players_from_config: &[String],
-        spectator_from_config: &[String],
-    ) -> Vec<PlayerType<PeerId>> {
-        players_connected
+    fn seats_from_config(players_from_config: &[String]) -> Result<Vec<(usize, PeerId)>, String> {
+        if players_from_config.is_empty() {
+            return Err("No players in the lobby config".to_string());
+        }
+
+        players_from_config
             .iter()
-            .map(|p| match p {
-                PlayerType::Remote(peer_id) => {
-                    if players_from_config.contains(&peer_id.0.to_string()) {
-                        PlayerType::Remote(*peer_id)
-                    } else if spectator_from_config.contains(&peer_id.0.to_string()) {
-                        PlayerType::Spectator(*peer_id)
-                    } else {
-                        warn!("A Player connected not found in config {:?}", peer_id);
-                        PlayerType::Spectator(*peer_id)
-                    }
-                }
-                _ => PlayerType::Local,
+            .enumerate()
+            .map(|(seat, id)| Self::parse_peer(id).map(|peer_id| (seat, peer_id)))
+            .collect()
+    }
+
+    fn remote_peers(players: &[PlayerType<PeerId>]) -> HashSet<PeerId> {
+        players
+            .iter()
+            .filter_map(|player| match player {
+                PlayerType::Remote(peer_id) => Some(*peer_id),
+                _ => None,
             })
             .collect()
+    }
+
+    fn wait_for_players(
+        shared_players: &Arc<Mutex<Vec<PlayerType<PeerId>>>>,
+        required: &[PeerId],
+    ) -> (HashSet<PeerId>, String) {
+        let start_time = Instant::now();
+        let mut connected = HashSet::new();
+        let mut all_connected = false;
+        let mut stopped = false;
+        let mut done = false;
+
+        while !done {
+            if let Ok(players) = shared_players.try_lock() {
+                connected = Self::remote_peers(&players);
+            }
+
+            all_connected = required.iter().all(|peer_id| connected.contains(peer_id));
+            stopped = matchbox_stop_requested();
+
+            done = all_connected || stopped || start_time.elapsed() >= PLAYERS_WAIT_TIMEOUT;
+
+            if !done {
+                sleep(Duration::from_millis(17));
+            }
+        }
+
+        let outcome = if all_connected {
+            "all connected"
+        } else if stopped {
+            "signaling loop ended"
+        } else {
+            "timed out"
+        };
+
+        (
+            connected,
+            format!(
+                "{} after {:.1} s",
+                outcome,
+                start_time.elapsed().as_secs_f32()
+            ),
+        )
+    }
+
+    fn ensure_players_connected(
+        required: &[PeerId],
+        connected: &HashSet<PeerId>,
+        outcome: &str,
+    ) -> Result<(), String> {
+        let missing: Vec<Uuid> = required
+            .iter()
+            .filter(|peer_id| !connected.contains(peer_id))
+            .map(|peer_id| peer_id.0)
+            .collect();
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        Err(format!(
+            "Initialization failed, missing players {:?} ({})",
+            missing, outcome
+        ))
     }
 
     pub unsafe fn init(&mut self, config: AppConfig) -> Result<(), String> {
@@ -337,23 +367,24 @@ impl Netplay {
 
         let session = Self::base_session_builder(&config);
 
-        if config.netplay.spectator_conf.is_some() {
-            return self.init_spectator(session, config);
+        let result = if config.netplay.spectator_conf.is_some() {
+            self.init_spectator(session, config)
+        } else if config.netplay.server_conf.is_some() {
+            self.init_p2p(session, config)
+        } else if config.netplay.local_conf.is_some() {
+            self.init_local(config)
+        } else if config.is_test() {
+            self.init_test(config)
+        } else {
+            Err("Not suitable configuration found".to_string())
+        };
+
+        if result.is_err() {
+            stop_matchbox_loop();
+            set_connected_peers(HashSet::new());
         }
 
-        if config.netplay.server_conf.is_some() {
-            return self.init_p2p(session, config);
-        }
-
-        if config.netplay.local_conf.is_some() {
-            return self.init_local(config);
-        }
-
-        if config.is_test() {
-            return self.init_test(config);
-        }
-
-        Err("Not suitable configuration found".to_string())
+        result
     }
 
     fn init_spectator(
@@ -362,9 +393,12 @@ impl Netplay {
         mut config: AppConfig,
     ) -> Result<(), String> {
         let spectate = config.netplay.spectator_conf.take().unwrap();
-        let players_from_config = config.netplay.players.clone().unwrap();
-        let spectator_from_config = config.netplay.spectators.clone().unwrap_or(vec![]);
-        let max_players = config.netplay.num_players as usize + spectator_from_config.len();
+        let players_from_config = config.netplay.players.clone().unwrap_or_default();
+        let seats = Self::seats_from_config(&players_from_config)?;
+        let host_peer = Self::parse_peer(&spectate.to_spectate.clone().unwrap_or_default())?;
+        let room_url = spectate
+            .room_url
+            .ok_or("spectator : room url missing".to_string())?;
 
         let session = session
             .with_num_players(config.netplay.num_players as usize)
@@ -372,8 +406,10 @@ impl Netplay {
             .with_catchup_speed(1)
             .map_err(|e| e.to_string())?;
 
-        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(spectate.room_url.unwrap());
-        let channel = socket.take_channel(0).unwrap();
+        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(room_url);
+        let channel = socket
+            .take_channel(0)
+            .map_err(|e| format!("take_channel : {:?}", e))?;
 
         let shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>> = Arc::new(Mutex::new(vec![]));
 
@@ -382,35 +418,14 @@ impl Netplay {
             socket,
             future_msg,
             shared_players.clone(),
-            max_players,
         )?;
 
-        let players_connected = Self::wait_for_players(&shared_players, max_players);
+        let required: Vec<PeerId> = seats.iter().map(|(_, peer_id)| *peer_id).collect();
+        let (connected, outcome) = Self::wait_for_players(&shared_players, &required);
 
-        if players_connected.len() != max_players {
-            return Err("Initialization failed, missing players".to_string());
-        }
+        Self::ensure_players_connected(&required, &connected, &outcome)?;
 
-        let players_connected_typed = Self::classify_peers(
-            &players_connected,
-            &players_from_config,
-            &spectator_from_config,
-        );
-
-        let mut seated: Vec<(usize, PeerId)> = players_connected_typed
-            .iter()
-            .filter_map(|player| match player {
-                PlayerType::Remote(peer_id) => players_from_config
-                    .iter()
-                    .position(|p| *p == peer_id.0.to_string())
-                    .map(|seat| (seat, *peer_id)),
-                _ => None,
-            })
-            .collect();
-
-        seated.sort_by_key(|(seat, _)| *seat);
-
-        for (seat, peer_id) in seated {
+        for (seat, peer_id) in seats {
             self.current_remote_players
                 .get_or_insert_with(Vec::new)
                 .push(Address::Peer(peer_id));
@@ -421,8 +436,6 @@ impl Netplay {
                 self.remote_player_handles.push(seat);
             }
         }
-
-        let host_peer = PeerId(Uuid::parse_str(&spectate.to_spectate.clone().unwrap()).unwrap());
 
         let sess = session.start_spectator_session(Address::Peer(host_peer), channel);
 
@@ -438,22 +451,43 @@ impl Netplay {
         mut config: AppConfig,
     ) -> Result<(), String> {
         let server = config.netplay.server_conf.take().unwrap();
-        let players_from_config = config.netplay.players.clone().unwrap();
-        let spectator_from_config = config.netplay.spectators.clone().unwrap_or(vec![]);
+        let players_from_config = config.netplay.players.clone().unwrap_or_default();
+        let spectators_from_config = config.netplay.spectators.clone().unwrap_or_default();
+        let local_peer_id = config.netplay.local_peer_id.clone().unwrap_or_default();
         let num_players = config.netplay.num_players as usize;
-        let max_players = num_players + spectator_from_config.len();
         let is_host = server.is_host;
+        let allow_late_spectators = server.allow_late_spectators.unwrap_or(true);
+        let room_url = server
+            .room_url
+            .ok_or("p2p : room url missing".to_string())?;
+
+        let seats = Self::seats_from_config(&players_from_config)?;
+        let local_seat = players_from_config
+            .iter()
+            .position(|p| *p == local_peer_id)
+            .ok_or_else(|| {
+                format!(
+                    "Local peer {} is not in the lobby ordering {:?}",
+                    local_peer_id, players_from_config
+                )
+            })?;
+        let configured_spectators = spectators_from_config
+            .iter()
+            .map(|id| Self::parse_peer(id))
+            .collect::<Result<Vec<PeerId>, String>>()?;
 
         let mut session = session
             .with_num_players(num_players)
             .map_err(|e| e.to_string())?;
 
-        if is_host && server.allow_late_spectators.unwrap_or(true) {
+        if is_host && allow_late_spectators {
             session = session.with_late_spectators(true);
         }
 
-        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(server.room_url.unwrap());
-        let channel = socket.take_channel(0).unwrap();
+        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(room_url);
+        let channel = socket
+            .take_channel(0)
+            .map_err(|e| format!("take_channel : {:?}", e))?;
 
         let shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>> = Arc::new(Mutex::new(vec![]));
 
@@ -462,85 +496,78 @@ impl Netplay {
             socket,
             future_msg,
             shared_players.clone(),
-            max_players,
         )?;
 
-        let players_connected = Self::wait_for_players(&shared_players, max_players);
+        let required: Vec<PeerId> = seats
+            .iter()
+            .filter(|(seat, _)| *seat != local_seat)
+            .map(|(_, peer_id)| *peer_id)
+            .collect();
+        let (connected, outcome) = Self::wait_for_players(&shared_players, &required);
 
-        if players_connected.len() != max_players && players_connected.len() != num_players {
-            return Err("Initialization failed".to_string());
-        }
+        Self::ensure_players_connected(&required, &connected, &outcome)?;
 
-        let players_connected_typed = Self::classify_peers(
-            &players_connected,
-            &players_from_config,
-            &spectator_from_config,
-        );
-
-        let local_peer_id = config.netplay.local_peer_id.clone().unwrap_or_default();
-
-        for player in players_connected_typed.iter().filter(|p| match p {
-            PlayerType::Spectator(_) => false,
-            _ => true,
-        }) {
-            let peer_id = match player {
-                PlayerType::Local => local_peer_id.clone(),
-                PlayerType::Remote(peer_id) => peer_id.0.to_string(),
-                _ => continue,
-            };
-
-            let seat = match players_from_config.iter().position(|p| *p == peer_id) {
-                Some(seat) => seat,
-                None => {
-                    return Err(format!(
-                        "Peer {} is not in the lobby ordering {:?}",
-                        peer_id, players_from_config
-                    ))
-                }
-            };
-
-            match player {
-                PlayerType::Local => {
-                    self.local_player_handle = Some(seat);
-                    session = session
-                        .add_player(PlayerType::Local, seat)
-                        .expect("failed to add player");
-                }
-                PlayerType::Remote(peer_id) => {
-                    self.current_remote_players
-                        .get_or_insert_with(Vec::new)
-                        .push(Address::Peer(*peer_id));
-
-                    self.remote_player_handles.push(seat);
-                    session = session
-                        .add_player(PlayerType::Remote(Address::Peer(*peer_id)), seat)
-                        .expect("failed to add player");
-                }
-                _ => {}
+        for (seat, peer_id) in &seats {
+            if *seat == local_seat {
+                self.local_player_handle = Some(*seat);
+                session = session
+                    .add_player(PlayerType::Local, *seat)
+                    .map_err(|e| format!("failed to add local player at seat {} : {}", seat, e))?;
+            } else {
+                self.current_remote_players
+                    .get_or_insert_with(Vec::new)
+                    .push(Address::Peer(*peer_id));
+                self.remote_player_handles.push(*seat);
+                session = session
+                    .add_player(PlayerType::Remote(Address::Peer(*peer_id)), *seat)
+                    .map_err(|e| format!("failed to add player at seat {} : {}", seat, e))?;
             }
         }
 
         if is_host {
-            for (i, player) in players_connected_typed
-                .into_iter()
-                .filter(|p| matches!(p, PlayerType::Spectator(_)))
-                .enumerate()
-            {
-                if let PlayerType::Spectator(peer_id) = player {
-                    self.spectators_handles.push(num_players + i);
+            let mut handle = num_players;
+
+            for peer_id in &configured_spectators {
+                if connected.contains(peer_id) {
                     session = session
-                        .add_player(
-                            PlayerType::Spectator(Address::Peer(peer_id)),
-                            num_players + i,
-                        )
-                        .expect("failed to add player");
+                        .add_player(PlayerType::Spectator(Address::Peer(*peer_id)), handle)
+                        .map_err(|e| format!("failed to add spectator {} : {}", peer_id.0, e))?;
+                    self.spectators_handles.push(handle);
+                    self.registered_spectators.insert(peer_id.0);
+                    handle += 1;
+                } else {
+                    self.queue_spectator(peer_id.0);
                 }
+            }
+
+            let known: HashSet<PeerId> = required
+                .iter()
+                .chain(configured_spectators.iter())
+                .cloned()
+                .collect();
+
+            for peer_id in connected.iter().filter(|peer_id| !known.contains(peer_id)) {
+                info!(
+                    "Peer {} is not in the lobby config, treating it as a late spectator",
+                    peer_id.0
+                );
+                self.queue_spectator(peer_id.0);
+            }
+        } else {
+            for peer_id in connected
+                .iter()
+                .filter(|peer_id| !required.contains(peer_id))
+            {
+                info!(
+                    "Peer {} is not a player of this session, ignoring",
+                    peer_id.0
+                );
             }
         }
 
         let sess = session
             .start_p2p_session(channel)
-            .expect("failed to start session");
+            .map_err(|e| format!("failed to start session : {}", e))?;
 
         info!("Starting p2p session");
 
@@ -901,18 +928,29 @@ impl Netplay {
         let uuid = Uuid::parse_str(peer_id)
             .map_err(|e| format!("add_spectator : invalid peer id '{}': {}", peer_id, e))?;
 
+        if self.registered_spectators.contains(&uuid) {
+            return Ok(());
+        }
+
         if !crate::is_peer_connected(&uuid) {
             info!(
                 "Late spectator {} has no WebRTC connection yet, deferring",
                 uuid
             );
-            if !self.pending_spectators.contains(&uuid) {
-                self.pending_spectators.push(uuid);
-            }
+            self.queue_spectator(uuid);
+
             return Ok(());
         }
 
         self.add_spectator_now(uuid).map(|_| ())
+    }
+
+    fn queue_spectator(&mut self, uuid: Uuid) {
+        if self.registered_spectators.contains(&uuid) || self.pending_spectators.contains(&uuid) {
+            return;
+        }
+
+        self.pending_spectators.push(uuid);
     }
 
     fn add_spectator_now(&mut self, uuid: Uuid) -> Result<usize, String> {
@@ -922,6 +960,7 @@ impl Netplay {
                     .add_spectator(Address::Peer(PeerId(uuid)))
                     .map_err(|e| e.to_string())?;
                 self.spectators_handles.push(handle);
+                self.registered_spectators.insert(uuid);
                 Ok(handle)
             }
             Some(_) => Err("add_spectator : requires a P2P session".to_string()),

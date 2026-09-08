@@ -1,4 +1,3 @@
-use exts::MutexNetplayExtensions;
 use neplay::Netplay;
 use once_cell::sync::{Lazy, OnceCell};
 use std::{
@@ -7,10 +6,12 @@ use std::{
     os::raw::c_char,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Mutex, MutexGuard,
     },
+    thread::sleep,
     time::Duration,
 };
+use tracing::warn;
 
 pub mod config;
 pub mod core;
@@ -61,17 +62,18 @@ pub fn get_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-unsafe fn get_netplay_intance() -> &'static Mutex<Netplay> {
-    NETPLAY_INSTANCE.ensure_not_poisoned();
+pub(crate) fn guard_netplay_instance() -> MutexGuard<'static, Netplay> {
+    match NETPLAY_INSTANCE.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("Netplay instance was poisoned by a panic, resetting it");
+            NETPLAY_INSTANCE.clear_poison();
 
-    &NETPLAY_INSTANCE
-}
+            let mut guard = poisoned.into_inner();
+            *guard = Netplay::new(None);
 
-unsafe fn reset_netplay_instance() {
-    NETPLAY_INSTANCE.clear_poison();
-
-    if let Ok(mut np) = NETPLAY_INSTANCE.lock() {
-        *np = Netplay::new(None);
+            guard
+        }
     }
 }
 
@@ -95,12 +97,7 @@ fn start_background_poller() {
         .name("ggrs-poller".into())
         .spawn(|| {
             while !POLLER_SHOULD_STOP.load(Ordering::Relaxed) {
-                let polled = unsafe {
-                    match get_netplay_intance().lock() {
-                        Ok(mut np) => np.poll_remote().is_ok(),
-                        Err(_) => false,
-                    }
-                };
+                let polled = guard_netplay_instance().poll_remote().is_ok();
 
                 if !polled {
                     break;
@@ -126,6 +123,39 @@ fn stop_background_poller() {
         }
 
         std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+static MATCHBOX_LOOP_ALIVE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn mark_matchbox_loop(alive: bool) {
+    MATCHBOX_LOOP_ALIVE.store(alive, Ordering::SeqCst);
+}
+
+pub(crate) fn set_matchbox_stop(stop: bool) {
+    let mut stp = SHOULD_STOP_MATCHBOX_FUTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    *stp = stop;
+}
+
+pub(crate) fn matchbox_stop_requested() -> bool {
+    SHOULD_STOP_MATCHBOX_FUTURE
+        .try_lock()
+        .map(|stp| *stp)
+        .unwrap_or(false)
+}
+
+pub(crate) fn stop_matchbox_loop() {
+    set_matchbox_stop(true);
+
+    for _ in 0..100 {
+        if !MATCHBOX_LOOP_ALIVE.load(Ordering::SeqCst) {
+            return;
+        }
+
+        sleep(Duration::from_millis(5));
     }
 }
 
