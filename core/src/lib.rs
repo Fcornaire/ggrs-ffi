@@ -19,6 +19,7 @@ pub mod exts;
 pub mod ffi;
 pub mod model;
 pub mod neplay;
+pub mod ping_measurement;
 pub mod session;
 
 static NETPLAY_INSTANCE: Lazy<Mutex<Netplay>> = Lazy::new(|| {
