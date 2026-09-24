@@ -8,7 +8,7 @@ use crate::{
         action_result::ActionResult,
         unmanaged::{safe_bytes::SafeBytes, unmanaged_bytes::UnmanagedBytes},
     },
-    has_netplay_disconnected, guard_netplay_instance,
+    guard_netplay_instance, has_netplay_disconnected,
     model::{
         ffi::{input_ffi::Inputs, netplay_request_ffi::NetplayRequests},
         game_state::GameState,
@@ -16,7 +16,7 @@ use crate::{
         netplay_request::NetplayRequest,
         network_stats::NetworkStats,
     },
-    start_background_poller, stop_background_poller, Events, Status,
+    ping_measurement, start_background_poller, stop_background_poller, Events, Status,
 };
 use std::ffi::CString;
 
@@ -308,5 +308,41 @@ pub unsafe extern "C" fn netplay_remote_player_handle_at(index: i32) -> i32 {
     np.remote_player_handles()
         .get(index as usize)
         .map(|handle| *handle as i32)
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ping_measurement_start(room_url: *const c_char) -> Status {
+    if room_url.is_null() {
+        return Status::ko("ping_measurement_start : room url is null");
+    }
+
+    let room_url = match std::ffi::CStr::from_ptr(room_url).to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return Status::ko("ping_measurement_start : room url is not valid"),
+    };
+
+    match ping_measurement::start(room_url) {
+        Ok(_) => Status::ok(),
+        Err(e) => Status::ko(&e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn ping_measurement_stop() {
+    ping_measurement::stop();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ping_measurement_rtt(peer_id: *const c_char) -> i32 {
+    if peer_id.is_null() {
+        return -1;
+    }
+
+    std::ffi::CStr::from_ptr(peer_id)
+        .to_str()
+        .ok()
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(|peer| ping_measurement::rtt(&peer))
         .unwrap_or(-1)
 }
