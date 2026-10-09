@@ -334,15 +334,26 @@ pub extern "C" fn ping_measurement_stop() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ping_measurement_rtt(peer_id: *const c_char) -> i32 {
+pub unsafe extern "C" fn ping_measurement_stats(
+    peer_id: *const c_char,
+    stats: *mut ping_measurement::PingStats,
+) {
+    if stats.is_null() {
+        return;
+    }
+
+    *stats = parse_peer(peer_id)
+        .map(|peer| ping_measurement::stats(&peer))
+        .unwrap_or_else(ping_measurement::PingStats::none);
+}
+
+unsafe fn parse_peer(peer_id: *const c_char) -> Option<uuid::Uuid> {
     if peer_id.is_null() {
-        return -1;
+        return None;
     }
 
     std::ffi::CStr::from_ptr(peer_id)
         .to_str()
         .ok()
         .and_then(|s| uuid::Uuid::parse_str(s).ok())
-        .map(|peer| ping_measurement::rtt(&peer))
-        .unwrap_or(-1)
 }
