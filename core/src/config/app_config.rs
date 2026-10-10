@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -14,7 +16,11 @@ pub struct AppConfig {
     pub fps: i32,
     #[serde(default)]
     pub max_input_delay: i32,
+    #[serde(default)]
+    pub connection_timeout_ms: u64,
 }
+
+const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl AppConfig {
     pub fn fps(&self) -> usize {
@@ -22,6 +28,14 @@ impl AppConfig {
             self.fps as usize
         } else {
             60
+        }
+    }
+
+    pub fn connection_timeout(&self) -> Duration {
+        if self.connection_timeout_ms > 0 {
+            Duration::from_millis(self.connection_timeout_ms)
+        } else {
+            DEFAULT_CONNECTION_TIMEOUT
         }
     }
 }
