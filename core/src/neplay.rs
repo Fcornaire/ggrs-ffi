@@ -33,7 +33,6 @@ use crate::{
 };
 
 const DESYNC_CHECK_INTERVAL: u32 = 120;
-const PLAYERS_WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub struct Netplay {
     pub local_player_handle: Option<usize>,
@@ -300,6 +299,7 @@ impl Netplay {
     fn wait_for_players(
         shared_players: &Arc<Mutex<Vec<PlayerType<PeerId>>>>,
         required: &[PeerId],
+        timeout: Duration,
     ) -> (HashSet<PeerId>, String) {
         let start_time = Instant::now();
         let mut connected = HashSet::new();
@@ -315,7 +315,7 @@ impl Netplay {
             all_connected = required.iter().all(|peer_id| connected.contains(peer_id));
             stopped = matchbox_stop_requested();
 
-            done = all_connected || stopped || start_time.elapsed() >= PLAYERS_WAIT_TIMEOUT;
+            done = all_connected || stopped || start_time.elapsed() >= timeout;
 
             if !done {
                 sleep(Duration::from_millis(17));
@@ -421,7 +421,8 @@ impl Netplay {
         )?;
 
         let required: Vec<PeerId> = seats.iter().map(|(_, peer_id)| *peer_id).collect();
-        let (connected, outcome) = Self::wait_for_players(&shared_players, &required);
+        let (connected, outcome) =
+            Self::wait_for_players(&shared_players, &required, config.connection_timeout());
 
         Self::ensure_players_connected(&required, &connected, &outcome)?;
 
@@ -503,7 +504,8 @@ impl Netplay {
             .filter(|(seat, _)| *seat != local_seat)
             .map(|(_, peer_id)| *peer_id)
             .collect();
-        let (connected, outcome) = Self::wait_for_players(&shared_players, &required);
+        let (connected, outcome) =
+            Self::wait_for_players(&shared_players, &required, config.connection_timeout());
 
         Self::ensure_players_connected(&required, &connected, &outcome)?;
 
