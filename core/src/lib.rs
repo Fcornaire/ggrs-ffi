@@ -20,7 +20,9 @@ pub mod ffi;
 pub mod model;
 pub mod neplay;
 pub mod ping_measurement;
+pub mod relay;
 pub mod session;
+pub mod transport;
 
 static NETPLAY_INSTANCE: Lazy<Mutex<Netplay>> = Lazy::new(|| {
     tracing_subscriber::fmt()

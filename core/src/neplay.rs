@@ -15,7 +15,7 @@ use ggrs::{
 };
 
 use crate::core::unmanaged::safe_bytes::SafeBytes;
-use crate::exts::WebRtcSocketGgrsExtensions;
+use crate::transport::{self, Connection, PeerChannel, PeerSocket, Transport};
 use crate::{
     config::{
         app_config::AppConfig,
@@ -61,6 +61,7 @@ fn assert_sockets_are_send() {
     is_send::<UdpNonBlockingSocket>();
     is_send::<matchbox_socket::WebRtcChannel>();
     is_send::<WebRtcSocket>();
+    is_send::<PeerChannel>();
 }
 
 impl Netplay {
@@ -194,15 +195,12 @@ impl Netplay {
             })
     }
 
-    fn spawn_matchbox_loop<F>(
+    fn spawn_matchbox_loop(
         thread_name: &str,
-        mut socket: WebRtcSocket,
-        future_msg: F,
+        mut socket: Box<dyn PeerSocket>,
+        connection: Connection,
         shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>>,
-    ) -> Result<(), String>
-    where
-        F: std::future::Future<Output = Result<(), matchbox_socket::Error>> + Send + 'static,
-    {
+    ) -> Result<(), String> {
         stop_matchbox_loop();
         set_matchbox_stop(false);
         set_netplay_disconnected(false);
@@ -215,16 +213,9 @@ impl Netplay {
 
                 get_runtime().block_on(async {
                     let loop_fut = async {
-                        match future_msg.await {
+                        match connection.await {
                             Ok(()) => info!("Matchbox thread exited cleanly!"),
-                            Err(e) => match e {
-                                matchbox_socket::Error::ConnectionFailed(e) => {
-                                    error!("Connection failed: {}", e);
-                                }
-                                matchbox_socket::Error::Disconnected(e) => {
-                                    error!("Connection closed: {}", e);
-                                }
-                            },
+                            Err(e) => error!("Connection closed: {}", e),
                         }
                     }
                     .fuse();
@@ -236,7 +227,9 @@ impl Netplay {
 
                     while !matchbox_stop_requested() {
                         socket.update_peers();
-                        set_connected_peers(socket.connected_peers().map(|p| p.0).collect());
+                        set_connected_peers(
+                            socket.connected_peers().into_iter().map(|p| p.0).collect(),
+                        );
 
                         if let Ok(mut players) = shared_players.lock() {
                             *players = socket.players();
@@ -406,23 +399,39 @@ impl Netplay {
             .with_catchup_speed(1)
             .map_err(|e| e.to_string())?;
 
-        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(room_url);
-        let channel = socket
-            .take_channel(0)
-            .map_err(|e| format!("take_channel : {:?}", e))?;
+        let (
+            Transport {
+                socket,
+                channel,
+                connection,
+            },
+            relay_status,
+        ) = match spectate.relay_url {
+            Some(relay_url) => {
+                let (transport, status) =
+                    transport::open_routed(room_url, relay_url, HashSet::new(), Some(host_peer))?;
+                (transport, Some(status))
+            }
+            None => (transport::open(room_url, None)?, None),
+        };
 
         let shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>> = Arc::new(Mutex::new(vec![]));
 
         Self::spawn_matchbox_loop(
             "matchbox-thread-spectate",
             socket,
-            future_msg,
+            connection,
             shared_players.clone(),
         )?;
 
-        let required: Vec<PeerId> = seats.iter().map(|(_, peer_id)| *peer_id).collect();
+        let required = vec![host_peer];
         let (connected, outcome) =
             Self::wait_for_players(&shared_players, &required, config.connection_timeout());
+
+        if !connected.contains(&host_peer) && relay_status.is_some_and(|status| status.is_refused())
+        {
+            return Err("Initialization failed, no spectator slot left".to_string());
+        }
 
         Self::ensure_players_connected(&required, &connected, &outcome)?;
 
@@ -476,6 +485,11 @@ impl Netplay {
             .iter()
             .map(|id| Self::parse_peer(id))
             .collect::<Result<Vec<PeerId>, String>>()?;
+        let relay_peers = server
+            .relay_peers
+            .iter()
+            .map(|id| Self::parse_peer(id))
+            .collect::<Result<HashSet<PeerId>, String>>()?;
 
         let mut session = session
             .with_num_players(num_players)
@@ -485,17 +499,21 @@ impl Netplay {
             session = session.with_late_spectators(true);
         }
 
-        let (mut socket, future_msg) = WebRtcSocket::new_unreliable(room_url);
-        let channel = socket
-            .take_channel(0)
-            .map_err(|e| format!("take_channel : {:?}", e))?;
+        let Transport {
+            socket,
+            channel,
+            connection,
+        } = match server.relay_url {
+            Some(relay_url) => transport::open_routed(room_url, relay_url, relay_peers, None)?.0,
+            None => transport::open(room_url, None)?,
+        };
 
         let shared_players: Arc<Mutex<Vec<PlayerType<PeerId>>>> = Arc::new(Mutex::new(vec![]));
 
         Self::spawn_matchbox_loop(
             "matchbox-thread",
             socket,
-            future_msg,
+            connection,
             shared_players.clone(),
         )?;
 

@@ -1,19 +1,22 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
     },
     thread::JoinHandle,
     time::{Duration, Instant},
 };
 
-use matchbox_socket::{PeerId, PeerState, WebRtcSocket};
+use matchbox_socket::PeerId;
 use once_cell::sync::Lazy;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::get_runtime;
+use crate::{
+    get_runtime,
+    transport::{self, PeerChannel, Transport},
+};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
 const PING_INTERVAL: Duration = Duration::from_millis(500);
@@ -27,7 +30,8 @@ const PING: u8 = 0;
 const PONG: u8 = 1;
 
 static INSTANT: Lazy<Instant> = Lazy::new(Instant::now);
-static PING_MEASUREMENT: Lazy<Mutex<Option<PingMeasurement>>> = Lazy::new(|| Mutex::new(None));
+static PING_MEASUREMENTS: Lazy<Mutex<PingMeasurements>> =
+    Lazy::new(|| Mutex::new(PingMeasurements::default()));
 
 type Samples = Arc<Mutex<HashMap<Uuid, PeerSamples>>>;
 
@@ -83,8 +87,36 @@ struct PingMeasurement {
     thread: JoinHandle<()>,
 }
 
-pub fn start(room_url: String) -> Result<(), String> {
-    stop();
+#[derive(Default)]
+struct PingMeasurements {
+    direct: Option<PingMeasurement>,
+    relay: Option<PingMeasurement>,
+}
+
+impl PingMeasurements {
+    fn get(&self, is_relay: bool) -> Option<&PingMeasurement> {
+        if is_relay {
+            self.relay.as_ref()
+        } else {
+            self.direct.as_ref()
+        }
+    }
+
+    fn get_mut(&mut self, is_relay: bool) -> &mut Option<PingMeasurement> {
+        if is_relay {
+            &mut self.relay
+        } else {
+            &mut self.direct
+        }
+    }
+}
+
+fn lock_ping_measurements() -> MutexGuard<'static, PingMeasurements> {
+    PING_MEASUREMENTS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+pub fn start(url: String, is_relay: bool) -> Result<(), String> {
+    stop(is_relay);
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let samples: Samples = Arc::new(Mutex::new(HashMap::new()));
@@ -94,12 +126,12 @@ pub fn start(room_url: String) -> Result<(), String> {
         let samples = samples.clone();
 
         std::thread::Builder::new()
-            .name("ping-measurement".into())
-            .spawn(move || run(room_url, stop_flag, samples))
+            .name(thread_name(is_relay).into())
+            .spawn(move || run(url, is_relay, stop_flag, samples))
             .map_err(|e| format!("Failed to spawn ping measurement : {}", e))?
     };
 
-    *PING_MEASUREMENT.lock().unwrap_or_else(|p| p.into_inner()) = Some(PingMeasurement {
+    *lock_ping_measurements().get_mut(is_relay) = Some(PingMeasurement {
         stop: stop_flag,
         samples,
         thread,
@@ -108,11 +140,8 @@ pub fn start(room_url: String) -> Result<(), String> {
     Ok(())
 }
 
-pub fn stop() {
-    let measurement = PING_MEASUREMENT
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take();
+pub fn stop(is_relay: bool) {
+    let measurement = lock_ping_measurements().get_mut(is_relay).take();
 
     if let Some(measurement) = measurement {
         measurement.stop.store(true, Ordering::SeqCst);
@@ -120,10 +149,10 @@ pub fn stop() {
     }
 }
 
-pub fn stats(peer: &Uuid) -> PingStats {
-    let measurement = PING_MEASUREMENT.lock().unwrap_or_else(|p| p.into_inner());
+pub fn stats(peer: &Uuid, is_relay: bool) -> PingStats {
+    let measurements = lock_ping_measurements();
 
-    let Some(measurement) = measurement.as_ref() else {
+    let Some(measurement) = measurements.get(is_relay) else {
         return PingStats::none();
     };
 
@@ -171,52 +200,75 @@ fn to_millis(duration: Duration) -> i32 {
     (duration + HALF_MILLISECOND).as_millis() as i32
 }
 
-fn run(room_url: String, stop: Arc<AtomicBool>, samples: Samples) {
-    info!("Ping measurement started");
+fn thread_name(is_relay: bool) -> &'static str {
+    if is_relay {
+        "relay-ping-measurement"
+    } else {
+        "ping-measurement"
+    }
+}
 
-    let (mut socket, message_loop) = WebRtcSocket::new_unreliable(room_url);
-    let message_loop = get_runtime().spawn(message_loop);
+fn label(is_relay: bool) -> &'static str {
+    if is_relay {
+        "Relay ping measurement"
+    } else {
+        "Ping measurement"
+    }
+}
+
+fn run(url: String, is_relay: bool, stop: Arc<AtomicBool>, samples: Samples) {
+    let label = label(is_relay);
+    info!("{label} started");
+
+    let relay_url = is_relay.then(|| url.clone());
+
+    let Transport {
+        mut socket,
+        mut channel,
+        connection,
+    } = match transport::open(url, relay_url) {
+        Ok(transport) => transport,
+        Err(e) => {
+            warn!("{label} could not start : {e}");
+            return;
+        }
+    };
+
+    let connection = get_runtime().spawn(connection);
+    let mut connected: HashSet<PeerId> = HashSet::new();
     let mut next_ping = Instant::now();
 
     while !stop.load(Ordering::Relaxed) {
-        match socket.try_update_peers() {
-            Ok(changes) => {
-                for (peer, state) in changes {
-                    match state {
-                        PeerState::Connected => info!("Ping measurement connected to {}", peer.0),
-                        PeerState::Disconnected => {
-                            info!("Ping measurement lost {}", peer.0);
-                            samples
-                                .lock()
-                                .unwrap_or_else(|p| p.into_inner())
-                                .remove(&peer.0);
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                warn!("Ping measurement signaling closed");
-                break;
-            }
+        if connection.is_finished() || !socket.update_peers() {
+            warn!("{label} signaling closed");
+            break;
         }
 
-        let channel = socket.channel_mut(0);
-
-        for (peer, packet) in channel.receive() {
-            handle_packet(channel, peer, &packet, &samples);
+        for (peer, packet) in channel.receive_packets() {
+            handle_packet(&mut channel, peer, &packet, &samples);
         }
 
         if Instant::now() >= next_ping {
             next_ping = Instant::now() + PING_INTERVAL;
 
-            let peers: Vec<PeerId> = socket.connected_peers().collect();
-            let channel = socket.channel_mut(0);
+            let peers: HashSet<PeerId> = socket.connected_peers().into_iter().collect();
             let now = INSTANT.elapsed();
             let stamp = now.as_micros() as u64;
             let mut samples = samples.lock().unwrap_or_else(|p| p.into_inner());
 
-            for peer in peers {
-                let sent = channel.try_send(encode(PING, stamp), peer).is_ok();
+            for peer in peers.difference(&connected) {
+                info!("{label} connected to {}", peer.0);
+            }
+
+            for peer in connected.difference(&peers) {
+                info!("{label} lost {}", peer.0);
+                samples.remove(&peer.0);
+            }
+
+            connected = peers;
+
+            for peer in &connected {
+                let sent = channel.send_packet(&encode(PING, stamp), *peer);
 
                 if let Some(peer_samples) = samples.get_mut(&peer.0) {
                     peer_samples.expire_pending(now);
@@ -231,25 +283,19 @@ fn run(room_url: String, stop: Arc<AtomicBool>, samples: Samples) {
         std::thread::sleep(POLL_INTERVAL);
     }
 
-    socket.close();
-    message_loop.abort();
+    connection.abort();
 
-    info!("Ping measurement stopped");
+    info!("{label} stopped");
 }
 
-fn handle_packet(
-    channel: &mut matchbox_socket::WebRtcChannel,
-    peer: PeerId,
-    packet: &[u8],
-    samples: &Samples,
-) {
+fn handle_packet(channel: &mut PeerChannel, peer: PeerId, packet: &[u8], samples: &Samples) {
     let Some((kind, stamp)) = decode(packet) else {
         return;
     };
 
     match kind {
         PING => {
-            let _ = channel.try_send(encode(PONG, stamp), peer);
+            channel.send_packet(&encode(PONG, stamp), peer);
         }
         PONG => {
             let rtt = INSTANT
