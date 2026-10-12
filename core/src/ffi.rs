@@ -312,7 +312,7 @@ pub unsafe extern "C" fn netplay_remote_player_handle_at(index: i32) -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ping_measurement_start(room_url: *const c_char) -> Status {
+pub unsafe extern "C" fn ping_measurement_start(room_url: *const c_char, is_relay: bool) -> Status {
     if room_url.is_null() {
         return Status::ko("ping_measurement_start : room url is null");
     }
@@ -322,20 +322,21 @@ pub unsafe extern "C" fn ping_measurement_start(room_url: *const c_char) -> Stat
         Err(_) => return Status::ko("ping_measurement_start : room url is not valid"),
     };
 
-    match ping_measurement::start(room_url) {
+    match ping_measurement::start(room_url, is_relay) {
         Ok(_) => Status::ok(),
         Err(e) => Status::ko(&e),
     }
 }
 
 #[no_mangle]
-pub extern "C" fn ping_measurement_stop() {
-    ping_measurement::stop();
+pub extern "C" fn ping_measurement_stop(is_relay: bool) {
+    ping_measurement::stop(is_relay);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn ping_measurement_stats(
     peer_id: *const c_char,
+    is_relay: bool,
     stats: *mut ping_measurement::PingStats,
 ) {
     if stats.is_null() {
@@ -343,7 +344,7 @@ pub unsafe extern "C" fn ping_measurement_stats(
     }
 
     *stats = parse_peer(peer_id)
-        .map(|peer| ping_measurement::stats(&peer))
+        .map(|peer| ping_measurement::stats(&peer, is_relay))
         .unwrap_or_else(ping_measurement::PingStats::none);
 }
 

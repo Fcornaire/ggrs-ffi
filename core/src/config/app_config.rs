@@ -84,6 +84,10 @@ pub struct NetplayServerConfig {
     pub is_host: bool,
     #[serde(default)]
     pub allow_late_spectators: Option<bool>,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+    #[serde(default)]
+    pub relay_peers: Vec<String>,
 }
 
 //Add a spectator config
@@ -92,6 +96,8 @@ pub struct NetplayServerConfig {
 pub struct NetplaySpectatorConfig {
     pub room_url: Option<String>,
     pub to_spectate: Option<String>,
+    #[serde(default)]
+    pub relay_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
