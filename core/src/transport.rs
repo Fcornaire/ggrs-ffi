@@ -57,6 +57,8 @@ pub struct RoutedSocket {
     direct: WebRtcSocket,
     relay: RelaySocket,
     direct_peers: HashSet<PeerId>,
+    relay_peers: HashSet<PeerId>,
+    direct_only_peers: HashSet<PeerId>,
     routes: mpsc::Sender<HashSet<PeerId>>,
     relay_until_direct: Option<PeerId>,
     direct_since: Option<Instant>,
@@ -102,10 +104,22 @@ impl PeerSocket for RoutedSocket {
     }
 
     fn connected_peers(&self) -> Vec<PeerId> {
-        let mut peers = self.direct_peers.clone();
-        peers.extend(self.relay.connected_peers());
+        let direct = self
+            .direct_peers
+            .iter()
+            .filter(|peer| !self.relay_peers.contains(*peer))
+            .copied();
+        let relayed = self
+            .relay
+            .connected_peers()
+            .into_iter()
+            .filter(|peer| !self.direct_only_peers.contains(peer));
 
-        peers.into_iter().collect()
+        direct
+            .chain(relayed)
+            .collect::<HashSet<PeerId>>()
+            .into_iter()
+            .collect()
     }
 
     fn players(&mut self) -> Vec<PlayerType<PeerId>> {
@@ -119,6 +133,7 @@ pub struct RoutedChannel {
     direct: WebRtcChannel,
     relay: RelayChannel,
     relay_peers: HashSet<PeerId>,
+    direct_only_peers: HashSet<PeerId>,
     direct_peers: HashSet<PeerId>,
     routes: mpsc::Receiver<HashSet<PeerId>>,
     encoded_message: Vec<u8>,
@@ -132,7 +147,13 @@ impl RoutedChannel {
 
         let is_direct = self.direct_peers.contains(&peer);
 
-        if (self.relay_peers.contains(&peer) || !is_direct) && self.relay.send_packet(packet, peer)
+        if self.relay_peers.contains(&peer) {
+            return self.relay.send_packet(packet, peer);
+        }
+
+        if !is_direct
+            && !self.direct_only_peers.contains(&peer)
+            && self.relay.send_packet(packet, peer)
         {
             return true;
         }
@@ -151,7 +172,7 @@ impl RoutedChannel {
 pub enum PeerChannel {
     WebRtc(WebRtcChannel),
     Relay(RelayChannel),
-    Routed(RoutedChannel),
+    Routed(Box<RoutedChannel>),
 }
 
 impl PeerChannel {
@@ -177,7 +198,7 @@ impl NonBlockingSocket<Address> for PeerChannel {
         match self {
             PeerChannel::WebRtc(channel) => NonBlockingSocket::send_to(channel, msg, addr),
             PeerChannel::Relay(channel) => NonBlockingSocket::send_to(channel, msg, addr),
-            PeerChannel::Routed(channel) => NonBlockingSocket::send_to(channel, msg, addr),
+            PeerChannel::Routed(channel) => NonBlockingSocket::send_to(channel.as_mut(), msg, addr),
         }
     }
 
@@ -185,7 +206,9 @@ impl NonBlockingSocket<Address> for PeerChannel {
         match self {
             PeerChannel::WebRtc(channel) => NonBlockingSocket::receive_all_messages(channel),
             PeerChannel::Relay(channel) => NonBlockingSocket::receive_all_messages(channel),
-            PeerChannel::Routed(channel) => NonBlockingSocket::receive_all_messages(channel),
+            PeerChannel::Routed(channel) => {
+                NonBlockingSocket::receive_all_messages(channel.as_mut())
+            }
         }
     }
 }
@@ -254,6 +277,7 @@ pub fn open_routed(
     room_url: String,
     relay_url: String,
     relay_peers: HashSet<PeerId>,
+    direct_only_peers: HashSet<PeerId>,
     relay_until_direct: Option<PeerId>,
 ) -> Result<(Transport, RelayStatus), String> {
     let (direct, direct_channel, direct_connection) = open_webrtc(room_url)?;
@@ -266,18 +290,21 @@ pub fn open_routed(
             direct,
             relay,
             direct_peers: HashSet::new(),
+            relay_peers: relay_peers.clone(),
+            direct_only_peers: direct_only_peers.clone(),
             routes,
             relay_until_direct,
             direct_since: None,
         }),
-        channel: PeerChannel::Routed(RoutedChannel {
+        channel: PeerChannel::Routed(Box::new(RoutedChannel {
             direct: direct_channel,
             relay: relay_channel,
             relay_peers,
+            direct_only_peers,
             direct_peers: HashSet::new(),
             routes: routes_receiver,
             encoded_message: Vec::new(),
-        }),
+        })),
         connection: follow_primary(direct_connection, relay_connection).boxed(),
     };
 

@@ -408,8 +408,13 @@ impl Netplay {
             relay_status,
         ) = match spectate.relay_url {
             Some(relay_url) => {
-                let (transport, status) =
-                    transport::open_routed(room_url, relay_url, HashSet::new(), Some(host_peer))?;
+                let (transport, status) = transport::open_routed(
+                    room_url,
+                    relay_url,
+                    HashSet::new(),
+                    HashSet::new(),
+                    Some(host_peer),
+                )?;
                 (transport, Some(status))
             }
             None => (transport::open(room_url, None)?, None),
@@ -490,6 +495,11 @@ impl Netplay {
             .iter()
             .map(|id| Self::parse_peer(id))
             .collect::<Result<HashSet<PeerId>, String>>()?;
+        let direct_only_peers: HashSet<PeerId> = seats
+            .iter()
+            .filter(|(seat, peer_id)| *seat != local_seat && !relay_peers.contains(peer_id))
+            .map(|(_, peer_id)| *peer_id)
+            .collect();
 
         let mut session = session
             .with_num_players(num_players)
@@ -504,7 +514,9 @@ impl Netplay {
             channel,
             connection,
         } = match server.relay_url {
-            Some(relay_url) => transport::open_routed(room_url, relay_url, relay_peers, None)?.0,
+            Some(relay_url) => {
+                transport::open_routed(room_url, relay_url, relay_peers, direct_only_peers, None)?.0
+            }
             None => transport::open(room_url, None)?,
         };
 
