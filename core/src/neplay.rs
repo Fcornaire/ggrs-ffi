@@ -36,6 +36,9 @@ const DESYNC_CHECK_INTERVAL: u32 = 120;
 
 pub struct Netplay {
     pub local_player_handle: Option<usize>,
+    // The other seats of this peer (several players on one device), fed by netplay_set_local_inputs
+    extra_local_handles: Vec<usize>,
+    extra_local_inputs: Vec<Input>,
     pub remote_player_handles: Vec<usize>,
     num_players: usize,
     spectators_handles: Vec<usize>,
@@ -68,6 +71,8 @@ impl Netplay {
     pub fn new(session: Option<SessionType>) -> Self {
         Self {
             local_player_handle: None,
+            extra_local_handles: vec![],
+            extra_local_inputs: vec![],
             remote_player_handles: vec![],
             num_players: 2,
             spectators_handles: vec![],
@@ -95,6 +100,17 @@ impl Netplay {
         } else {
             Some(inputs)
         };
+    }
+
+    pub fn set_local_inputs(&mut self, inputs: Vec<Input>) {
+        self.extra_local_inputs = inputs;
+    }
+
+    pub fn local_player_handles(&self) -> Vec<usize> {
+        self.local_player_handle
+            .into_iter()
+            .chain(self.extra_local_handles.iter().copied())
+            .collect()
     }
 
     pub fn local_player_handle(&self) -> i32 {
@@ -477,10 +493,13 @@ impl Netplay {
             .ok_or("p2p : room url missing".to_string())?;
 
         let seats = Self::seats_from_config(&players_from_config)?;
-        let local_seat = players_from_config
+        let local_seats: Vec<usize> = players_from_config
             .iter()
-            .position(|p| *p == local_peer_id)
-            .ok_or_else(|| {
+            .enumerate()
+            .filter(|(_, p)| **p == local_peer_id)
+            .map(|(seat, _)| seat)
+            .collect();
+        let local_seat = *local_seats.first().ok_or_else(|| {
                 format!(
                     "Local peer {} is not in the lobby ordering {:?}",
                     local_peer_id, players_from_config
@@ -497,7 +516,7 @@ impl Netplay {
             .collect::<Result<HashSet<PeerId>, String>>()?;
         let direct_only_peers: HashSet<PeerId> = seats
             .iter()
-            .filter(|(seat, peer_id)| *seat != local_seat && !relay_peers.contains(peer_id))
+            .filter(|(seat, peer_id)| !local_seats.contains(seat) && !relay_peers.contains(peer_id))
             .map(|(_, peer_id)| *peer_id)
             .collect();
 
@@ -531,7 +550,7 @@ impl Netplay {
 
         let required: Vec<PeerId> = seats
             .iter()
-            .filter(|(seat, _)| *seat != local_seat)
+            .filter(|(seat, _)| !local_seats.contains(seat))
             .map(|(_, peer_id)| *peer_id)
             .collect();
         let (connected, outcome) =
@@ -540,8 +559,12 @@ impl Netplay {
         Self::ensure_players_connected(&required, &connected, &outcome)?;
 
         for (seat, peer_id) in &seats {
-            if *seat == local_seat {
-                self.local_player_handle = Some(*seat);
+            if local_seats.contains(seat) {
+                if *seat == local_seat {
+                    self.local_player_handle = Some(*seat);
+                } else {
+                    self.extra_local_handles.push(*seat);
+                }
                 session = session
                     .add_player(PlayerType::Local, *seat)
                     .map_err(|e| format!("failed to add local player at seat {} : {}", seat, e))?;
@@ -720,6 +743,18 @@ impl Netplay {
 
                 if let Err(e) = session.add_local_input(local_handle, input) {
                     return Err(format!("Couldn't added local input : {}", e));
+                }
+
+                for handle in &self.extra_local_handles {
+                    let extra_input = self
+                        .extra_local_inputs
+                        .get(*handle)
+                        .copied()
+                        .unwrap_or_default();
+
+                    if let Err(e) = session.add_local_input(*handle, extra_input) {
+                        return Err(format!("Couldn't added local input : {}", e));
+                    }
                 }
 
                 if self.is_test {
