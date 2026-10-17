@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use ggrs::{
-    DesyncDetection, GgrsError, GgrsRequest, InputStatus, PlayerType, SessionBuilder,
+    DesyncDetection, GgrsError, GgrsRequest, InputStatus, PlayerType, SessionBuilder, SessionState,
     SyncTestSession, UdpNonBlockingSocket,
 };
 
@@ -560,7 +560,7 @@ impl Netplay {
             let mut handle = num_players;
 
             for peer_id in &configured_spectators {
-                if connected.contains(peer_id) {
+                if !allow_late_spectators && connected.contains(peer_id) {
                     session = session
                         .add_player(PlayerType::Spectator(Address::Peer(*peer_id)), handle)
                         .map_err(|e| format!("failed to add spectator {} : {}", peer_id.0, e))?;
@@ -964,6 +964,13 @@ impl Netplay {
             return Ok(());
         }
 
+        if self.is_p2p_synchronizing() {
+            info!("Late spectator {} deferred until the session runs", uuid);
+            self.queue_spectator(uuid);
+
+            return Ok(());
+        }
+
         if !crate::is_peer_connected(&uuid) {
             info!(
                 "Late spectator {} has no WebRTC connection yet, deferring",
@@ -1000,8 +1007,15 @@ impl Netplay {
         }
     }
 
+    fn is_p2p_synchronizing(&self) -> bool {
+        matches!(
+            self.session.as_ref(),
+            Some(SessionType::P2P(session)) if session.current_state() != SessionState::Running
+        )
+    }
+
     fn drain_pending_spectators(&mut self) {
-        if self.pending_spectators.is_empty() {
+        if self.pending_spectators.is_empty() || self.is_p2p_synchronizing() {
             return;
         }
 
