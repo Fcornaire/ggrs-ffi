@@ -119,6 +119,25 @@ pub unsafe extern "C" fn netplay_set_test_inputs(data: *const Input, len: i32) -
     Status::ok()
 }
 
+/// Inputs of this peer's other players (several players on one device), indexed by handle,
+/// used by the next netplay_advance_frame calls
+#[no_mangle]
+pub unsafe extern "C" fn netplay_set_local_inputs(data: *const Input, len: i32) -> Status {
+    let mut np = guard_netplay_instance();
+
+    if data.is_null() || len <= 0 {
+        np.set_local_inputs(vec![]);
+
+        return Status::ok();
+    }
+
+    let slice = std::slice::from_raw_parts(data, len as usize);
+
+    np.set_local_inputs(slice.to_vec());
+
+    Status::ok()
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn netplay_advance_frame(input: Input) -> Status {
     let mut np = guard_netplay_instance();
@@ -253,6 +272,27 @@ pub unsafe extern "C" fn netplay_local_player_handle() -> i32 {
     let np = guard_netplay_instance();
 
     np.local_player_handle()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_local_player_handle_count() -> i32 {
+    let np = guard_netplay_instance();
+
+    np.local_player_handles().len() as i32
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netplay_local_player_handle_at(index: i32) -> i32 {
+    let np = guard_netplay_instance();
+
+    if index < 0 {
+        return -1;
+    }
+
+    np.local_player_handles()
+        .get(index as usize)
+        .map(|handle| *handle as i32)
+        .unwrap_or(-1)
 }
 
 #[no_mangle]
