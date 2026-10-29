@@ -119,8 +119,6 @@ pub unsafe extern "C" fn netplay_set_test_inputs(data: *const Input, len: i32) -
     Status::ok()
 }
 
-/// Inputs of this peer's other players (several players on one device), indexed by handle,
-/// used by the next netplay_advance_frame calls
 #[no_mangle]
 pub unsafe extern "C" fn netplay_set_local_inputs(data: *const Input, len: i32) -> Status {
     let mut np = guard_netplay_instance();
