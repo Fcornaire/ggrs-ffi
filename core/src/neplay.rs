@@ -500,11 +500,11 @@ impl Netplay {
             .map(|(seat, _)| seat)
             .collect();
         let local_seat = *local_seats.first().ok_or_else(|| {
-                format!(
-                    "Local peer {} is not in the lobby ordering {:?}",
-                    local_peer_id, players_from_config
-                )
-            })?;
+            format!(
+                "Local peer {} is not in the lobby ordering {:?}",
+                local_peer_id, players_from_config
+            )
+        })?;
         let configured_spectators = spectators_from_config
             .iter()
             .map(|id| Self::parse_peer(id))
@@ -727,48 +727,15 @@ impl Netplay {
     }
 
     pub fn advance_frame(&mut self, input: Input) -> Result<(), String> {
+        let extra_inputs = std::mem::take(&mut self.extra_local_inputs);
         let session_res = self.session();
 
         if let Some(mut session) = session_res {
             if !self.is_spectator {
-                if let None = self.local_player_handle {
-                    return Err(format!("No local player handle"));
-                }
+                if let Err(e) = self.add_local_inputs(session.as_mut(), input, &extra_inputs) {
+                    self.session = Some(session.retrieve());
 
-                if self.remote_player_handles.is_empty() {
-                    return Err(format!("No remote player handle"));
-                }
-
-                let local_handle = self.local_player_handle.unwrap();
-
-                if let Err(e) = session.add_local_input(local_handle, input) {
-                    return Err(format!("Couldn't added local input : {}", e));
-                }
-
-                for handle in &self.extra_local_handles {
-                    let extra_input = self
-                        .extra_local_inputs
-                        .get(*handle)
-                        .copied()
-                        .unwrap_or_default();
-
-                    if let Err(e) = session.add_local_input(*handle, extra_input) {
-                        return Err(format!("Couldn't added local input : {}", e));
-                    }
-                }
-
-                if self.is_test {
-                    for handle in (0..self.num_players).filter(|h| *h != local_handle) {
-                        let seat_input = self
-                            .test_inputs
-                            .as_ref()
-                            .and_then(|inputs| inputs.get(handle).copied())
-                            .unwrap_or_default();
-
-                        if let Err(e) = session.add_local_input(handle, seat_input) {
-                            return Err(format!("Couldn't added test input : {}", e));
-                        }
-                    }
+                    return Err(e);
                 }
             }
 
@@ -803,6 +770,50 @@ impl Netplay {
         }
 
         Err("advance_frame: No session found".to_string())
+    }
+
+    fn add_local_inputs(
+        &self,
+        session: &mut dyn Session<GGRSConfig>,
+        input: Input,
+        extra_inputs: &[Input],
+    ) -> Result<(), String> {
+        let local_handle = match self.local_player_handle {
+            Some(handle) => handle,
+            None => return Err(format!("No local player handle")),
+        };
+
+        if self.remote_player_handles.is_empty() {
+            return Err(format!("No remote player handle"));
+        }
+
+        if let Err(e) = session.add_local_input(local_handle, input) {
+            return Err(format!("Couldn't added local input : {}", e));
+        }
+
+        for handle in &self.extra_local_handles {
+            let extra_input = extra_inputs.get(*handle).copied().unwrap_or_default();
+
+            if let Err(e) = session.add_local_input(*handle, extra_input) {
+                return Err(format!("Couldn't added local input : {}", e));
+            }
+        }
+
+        if self.is_test {
+            for handle in (0..self.num_players).filter(|h| *h != local_handle) {
+                let seat_input = self
+                    .test_inputs
+                    .as_ref()
+                    .and_then(|inputs| inputs.get(handle).copied())
+                    .unwrap_or_default();
+
+                if let Err(e) = session.add_local_input(handle, seat_input) {
+                    return Err(format!("Couldn't added test input : {}", e));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn events(&mut self) -> Vec<String> {
