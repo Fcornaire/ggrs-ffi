@@ -35,7 +35,7 @@ impl fmt::Display for Address {
 }
 
 fn build_packet(msg: &Message) -> Packet {
-    bincode::serialize(&msg).unwrap().into_boxed_slice()
+    bincode::serialize(&msg).unwrap().into()
 }
 
 fn deserialize_packet(message: (PeerId, Packet)) -> (PeerId, Message) {

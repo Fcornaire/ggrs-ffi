@@ -13,7 +13,7 @@ use async_tungstenite::{
 use futures::{channel::oneshot, future::Fuse, select, FutureExt, StreamExt};
 use futures_timer::Delay;
 use ggrs::{Message, NonBlockingSocket, PlayerType};
-use matchbox_socket::PeerId;
+use matchbox_socket::{Packet, PeerId};
 use serde::Deserialize;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -479,7 +479,7 @@ impl RelayChannel {
         true
     }
 
-    pub fn receive_packets(&mut self) -> Vec<(PeerId, Box<[u8]>)> {
+    pub fn receive_packets(&mut self) -> Vec<(PeerId, Packet)> {
         let mut received = vec![];
 
         let Some(relay_addr) = lock_relay_state(&self.state).relay_addr else {
@@ -504,11 +504,10 @@ impl RelayChannel {
             };
 
             let packet = match payload.split_first() {
-                Some((&PAYLOAD_WHOLE, bytes)) => Some(Box::from(bytes)),
-                Some((&PAYLOAD_PIECE, piece)) => self
-                    .reassembly
-                    .accept(peer, piece)
-                    .map(Vec::into_boxed_slice),
+                Some((&PAYLOAD_WHOLE, bytes)) => Some(Packet::copy_from_slice(bytes)),
+                Some((&PAYLOAD_PIECE, piece)) => {
+                    self.reassembly.accept(peer, piece).map(Packet::from)
+                }
                 _ => None,
             };
 
