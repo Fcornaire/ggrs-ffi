@@ -6,7 +6,7 @@ use std::{
 
 use futures::{future::BoxFuture, select, FutureExt};
 use ggrs::{Message, NonBlockingSocket, PlayerType};
-use matchbox_socket::{PeerId, WebRtcChannel, WebRtcSocket};
+use matchbox_socket::{Packet, PeerId, WebRtcChannel, WebRtcSocket};
 use tracing::{info, warn};
 
 use crate::{
@@ -158,10 +158,14 @@ impl RoutedChannel {
             return true;
         }
 
-        is_direct && self.direct.try_send(Box::from(packet), peer).is_ok()
+        is_direct
+            && self
+                .direct
+                .try_send(Packet::copy_from_slice(packet), peer)
+                .is_ok()
     }
 
-    fn receive_packets(&mut self) -> Vec<(PeerId, Box<[u8]>)> {
+    fn receive_packets(&mut self) -> Vec<(PeerId, Packet)> {
         let mut packets = self.direct.receive();
         packets.extend(self.relay.receive_packets());
 
@@ -178,13 +182,15 @@ pub enum PeerChannel {
 impl PeerChannel {
     pub fn send_packet(&mut self, packet: &[u8], peer: PeerId) -> bool {
         match self {
-            PeerChannel::WebRtc(channel) => channel.try_send(Box::from(packet), peer).is_ok(),
+            PeerChannel::WebRtc(channel) => channel
+                .try_send(Packet::copy_from_slice(packet), peer)
+                .is_ok(),
             PeerChannel::Relay(channel) => channel.send_packet(packet, peer),
             PeerChannel::Routed(channel) => channel.send_packet(packet, peer),
         }
     }
 
-    pub fn receive_packets(&mut self) -> Vec<(PeerId, Box<[u8]>)> {
+    pub fn receive_packets(&mut self) -> Vec<(PeerId, Packet)> {
         match self {
             PeerChannel::WebRtc(channel) => channel.receive(),
             PeerChannel::Relay(channel) => channel.receive_packets(),
