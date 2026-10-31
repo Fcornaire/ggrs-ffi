@@ -24,6 +24,12 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: libggrs_ffi.so
+          # FortRise's macOS build is x86_64 (runs under Rosetta on Apple
+          # silicon) and its loader only probes Unmanaged/osx-x64, so one
+          # x86_64 dylib covers every Mac.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: libggrs_ffi.dylib
 
     runs-on: ${{ matrix.os }}
 
@@ -55,7 +61,7 @@ jobs:
       - name: Upload Release
         uses: ncipollo/release-action@v1.14.0
         with:
-          artifacts: "artifacts/x86_64-pc-windows-msvc/ggrs_ffi.dll,artifacts/x86_64-unknown-linux-gnu/libggrs_ffi.so"
+          artifacts: "artifacts/x86_64-pc-windows-msvc/ggrs_ffi.dll,artifacts/x86_64-unknown-linux-gnu/libggrs_ffi.so,artifacts/x86_64-apple-darwin/libggrs_ffi.dylib"
           tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           allowUpdates: true
           omitBodyDuringUpdate: true
